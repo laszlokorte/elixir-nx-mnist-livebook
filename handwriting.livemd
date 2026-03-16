@@ -17,6 +17,8 @@ The MNIST dataset contains a collection of handwritten digits (0-9) stored as 28
 
 The data set is stored in a csv file with 785 (28*28+1) columns. We the the first 100 rows and plot them as 28x28 bitmap and 1x1 bitmap.
 
+You can download it here: https://www.kaggle.com/api/v1/datasets/download/oddrationale/mnist-in-csv
+
 ```elixir
 csv_stream =
   Kino.FS.file_path("mnist_train.csv")
