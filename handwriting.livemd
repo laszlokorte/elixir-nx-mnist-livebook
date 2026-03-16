@@ -1,0 +1,773 @@
+<!-- livebook:{"file_entries":[{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"}]} -->
+
+# Handwriting Recognition
+
+```elixir
+Mix.install([
+  {:nx, "~> 0.11.0"},
+  {:kino_zoetrope, "~> 0.17.0"},
+  {:kino_rewind, "~> 0.1.0"},
+  {:csv, "~> 3.2"}
+])
+```
+
+## Introduction
+
+The MNIST dataset contains a collection of handwritten digits (0-9) stored as 28x28 grayscale images with 255 values (8bit) per pixel and an additional label (0-9)
+
+The data set is stored in a csv file with 785 (28*28+1) columns. We the the first 100 rows and plot them as 28x28 bitmap and 1x1 bitmap.
+
+```elixir
+csv_stream =
+  Kino.FS.file_path("mnist_train.csv")
+  |> File.stream!()
+  |> CSV.decode!()
+
+
+# per performance reasons we process only 30 items of the data set
+batch_size = 30
+
+data =
+  csv_stream
+  # read only the bitmap, drop the first columnn (label)
+  |> Stream.map(&Enum.drop(Enum.map(&1, fn x -> String.to_integer(x) end), 1))
+  |> Enum.take(batch_size)
+  |> Enum.to_list()
+  |> Nx.tensor()
+  |> Nx.reshape({:auto, 1, 28, 28})
+  # convert 0..255 to 0..1.0
+  |> Nx.divide(255)
+
+labels =
+  csv_stream
+  # read only the labels, keep only the first column
+  |> Stream.map(&Enum.take(Enum.map(&1, fn x -> String.to_integer(x) end), 1))
+  |> Enum.take(batch_size)
+  |> Enum.to_list()
+  |> Nx.tensor()
+  |> Nx.reshape({:auto, 1})
+
+labels_one_hot =
+  Nx.iota({10})
+  |> Nx.equal(labels)
+
+[
+  data |> Nx.reshape({:auto, 28, 28}),
+  labels |> Nx.reshape({:auto, 1, 1, 1}),
+  labels_one_hot |> Nx.reshape({:auto, 1, 10, 1})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Handwritten digits",
+  labels: ["Bitmap", "Label", "Labels (One Hot)"]
+)
+```
+
+```elixir
+kernelA = Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]]) |> Nx.new_axis(2) |> Nx.new_axis(0)
+
+kernelB =
+  Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+  |> Nx.transpose(axes: [1, 0])
+  |> Nx.new_axis(2)
+  |> Nx.new_axis(0)
+
+kernelC =
+  Nx.tensor([[0.5, 1, 0.5], [1, 2, 1], [0.5, 1, 0.5]])
+  |> Nx.transpose(axes: [1, 0])
+  |> Nx.new_axis(2)
+  |> Nx.new_axis(0)
+
+allKernels =
+  Nx.concatenate([
+    kernelA,
+    kernelB,
+    kernelC
+  ])
+
+[kernelA, kernelB, kernelC, allKernels]
+|> KinoZoetrope.TensorStack.new(
+  titel: "4 Example Kernels",
+  size: 100,
+  labels: ["Horizontal", "Vertical", "blur", "All three kernels"]
+)
+```
+
+```elixir
+kernelA = Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]]) |> Nx.new_axis(0) |> Nx.new_axis(0)
+
+kernelB =
+  Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+  |> Nx.transpose(axes: [1, 0])
+  |> Nx.new_axis(0)
+  |> Nx.new_axis(0)
+
+kernelB =
+  Nx.tensor([[1, 0, 1], [0, 0, 0], [-1, -2, -1]])
+  |> Nx.transpose(axes: [1, 0])
+  |> Nx.new_axis(0)
+  |> Nx.new_axis(0)
+
+kernelC =
+  Nx.tensor([[0.5, 1, 0.5], [1, 2, 1], [0.5, 1, 0.5]])
+  |> Nx.transpose(axes: [1, 0])
+  |> Nx.new_axis(0)
+  |> Nx.new_axis(0)
+
+bothKernels =
+  Nx.concatenate([
+    kernelA,
+    kernelB,
+    kernelC
+  ])
+
+result1 = Nx.conv(data, bothKernels, padding: :same)
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..2,
+        reduce: [
+          result1
+          |> Nx.reshape({:auto, 3, 28, 28})
+          |> Nx.transpose(axes: [0, 2, 3, 1])
+          |> Nx.multiply(255 / 4.0)
+        ] do
+      l ->
+        [Nx.slice_along_axis(result1, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1]) | l]
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Result of Convolution with 4 Kernels",
+  cmap: :viridis,
+  labels: [
+    "Original Input",
+    "Horizontal Edges",
+    "Vertical Edges",
+    "Blurred",
+    "Hor/Ver/Blur as RGB"
+  ]
+)
+```
+
+## Layer 1
+
+```elixir
+key = Nx.Random.key(0)
+sixteenKernels = Nx.Random.uniform(key, shape: {16, 1, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
+
+sixteenKernels
+|> Nx.transpose(axes: [0, 2, 3, 1])
+|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels")
+```
+
+```elixir
+result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same)
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..15 do
+      Nx.slice_along_axis(result_layer_1, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 1 Convolution results",
+  cmap: :viridis,
+  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")]
+)
+```
+
+```elixir
+result_layer_1_relu = Nx.max(0, result_layer_1)
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..15 do
+      Nx.slice_along_axis(result_layer_1_relu, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 1 Relu results (max(0, x))",
+  cmap: :viridis,
+  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")]
+)
+```
+
+```elixir
+result_layer_1_relu_max_pooled =
+  result_layer_1_relu |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..15 do
+      Nx.slice_along_axis(result_layer_1_relu_max_pooled, c, 1, axis: 1)
+      |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 1 Pooling Results",
+  cmap: :viridis,
+  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu max pooled")]
+)
+```
+
+```elixir
+defmodule Grid do
+  import Nx.Defn
+
+  # Help to reshape channels into a grid
+  defn make_grid(tensor, opts \\ []) do
+    opts = keyword!(opts, grid_size: 4)
+
+    grid_size = opts[:grid_size]
+
+    {batch, _channels, w, h} = Nx.shape(tensor)
+
+    tensor
+    # {batch, 4,4,14,14}
+    |> Nx.reshape({batch, grid_size, :auto, w, h})
+    # {batch, 4,14,4,14}
+    |> Nx.transpose(axes: [0, 1, 3, 2, 4])
+    # {batch,1,56,56}
+    |> Nx.reshape({batch, 1, grid_size * w, :auto})
+  end
+end
+
+Kino.nothing()
+```
+
+```elixir
+result_layer_1_relu_max_pooled_flatten =
+  result_layer_1_relu_max_pooled |> Nx.reshape({:auto})
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_1_relu_max_pooled
+  |> Grid.make_grid(grid_size: 4)
+  |> Nx.transpose(axes: [0, 2, 3, 1])
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 1 Pooling flattend into 2d array",
+  labels: ["Original Input", "Result Layer 1  2D-Flattened"],
+  size: [200, 400],
+  cmap: :viridis
+)
+```
+
+## Layer 2
+
+```elixir
+key = Nx.Random.key(1)
+thirtyTwoKernels = Nx.Random.uniform(key, shape: {32, 16, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
+
+Nx.shape(thirtyTwoKernels)
+```
+
+```elixir
+for c <- 0..15 do
+  Nx.slice_along_axis(thirtyTwoKernels, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+end
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
+  labels:
+    for(
+      c <- 1..16,
+      do: "Kernel channel #{c}"
+    )
+)
+```
+
+```elixir
+result_layer_2 = Nx.conv(result_layer_1_relu_max_pooled, thirtyTwoKernels, padding: :same)
+
+Nx.shape(result_layer_2)
+```
+
+```elixir
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..31 do
+      Nx.slice_along_axis(result_layer_2, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 2 Convolution results",
+  cmap: :viridis,
+  show_meta: false,
+  legend: false,
+  labels: ["Original Input" | for(c <- 1..32, do: "Result for kernel #{c}")]
+)
+```
+
+```elixir
+result_layer_2_relu = Nx.max(0, result_layer_2)
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..31 do
+      Nx.slice_along_axis(result_layer_2_relu, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 2 Relu Results (max(0, 1))",
+  cmap: :viridis,
+  show_meta: false,
+  legend: false,
+  labels: [
+    "Original Input"
+    | for(c <- 1..32, do: "Result kernel #{c} Relu2")
+  ]
+)
+```
+
+```elixir
+result_layer_2_relu_max_pooled =
+  result_layer_2_relu |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1])
+  | for c <- 0..31 do
+      Nx.slice_along_axis(result_layer_2_relu_max_pooled, c, 1, axis: 1)
+      |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 2 Pooling result",
+  cmap: :viridis,
+  show_meta: false,
+  legend: false,
+  labels: [
+    "Original Input"
+    | for(c <- 1..32, do: "Result  K_#{c} Relu MaxPooled")
+  ]
+)
+```
+
+```elixir
+result_layer_2_relu_max_pooled_flatten =
+  result_layer_2_relu_max_pooled |> Nx.reshape({:auto, 7 * 7 * 32})
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_2_relu_max_pooled |> Grid.make_grid() |> Nx.transpose(axes: [0, 2, 3, 1])
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 2 Pooling flattend into 2D array",
+  labels: ["Original Input", "Result Layer 2 Flattened"],
+  cmap: :viridis,
+  size: [100, 400]
+)
+```
+
+```elixir
+key = Nx.Random.key(2)
+
+randomMatrix_layer3 =
+  Nx.Random.uniform(key, shape: {32 * 7 * 7, 120}) |> elem(0) |> Nx.subtract(0.5)
+
+randomMatrix_layer3
+|> Nx.reshape({1, 120, :auto, 1})
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 3 Weight Matrix",
+  size: 850,
+  show_meta: true,
+  legend: false,
+  cmap: :viridis,
+  labels: ["Matrix Values"]
+)
+```
+
+```elixir
+result_layer_3 =
+  result_layer_2_relu_max_pooled_flatten |> Nx.dot(randomMatrix_layer3)
+
+Nx.shape(result_layer_3 )
+```
+
+```elixir
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_2_relu_max_pooled
+  |> Grid.make_grid()
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_3
+  |> Nx.reshape({:auto, 12, 10})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 3 Matrix Multiplication",
+  show_meta: false,
+  labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix"],
+  cmap: :viridis,
+  legend: false,
+  size: [150, 300, 250]
+)
+```
+
+```elixir
+result_layer_3_relu = Nx.max(0, result_layer_3)
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_2_relu_max_pooled
+  |> Grid.make_grid()
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_3
+  |> Nx.reshape({:auto, 12, 10}),
+  result_layer_3_relu
+  |> Nx.reshape({:auto, 12, 10})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 3 Relu Activation",
+  show_meta: false,
+  cmap: :viridis,
+  legend: [false, false, true, true],
+  size: [100, 400, 200, 200],
+  labels: ["Original Input", "Input from Layere 2", "Before Relu", "Result Layer 3 Relu"]
+)
+```
+
+## Layer 4
+
+```elixir
+key = Nx.Random.key(2)
+randomMatrix_layer4 = Nx.Random.uniform(key, shape: {120, 10}) |> elem(0) |> Nx.subtract(0.5)
+
+randomMatrix_layer4
+|> Nx.reshape({1, :auto, 120, 1})
+|> KinoZoetrope.TensorStack.new(
+  titel: "Layer 4 Weight Matrix",
+  size: 850,
+  show_meta: true,
+  cmap: :viridis,
+  legend: false,
+  labels: ["Values"]
+)
+```
+
+```elixir
+result_layer_4 =
+  result_layer_3_relu |> Nx.dot(randomMatrix_layer4)
+
+Nx.shape(result_layer_4)
+```
+
+```elixir
+
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_3_relu
+  |> Nx.reshape({:auto, 12, 10}),
+  result_layer_4
+  |> Nx.reshape({:auto, 10, 1, 1}),
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Output Layer",
+  show_meta: false,
+  cmap: :viridis,
+  size: [150, 150, 20],
+  labels: [
+    "Input",
+    "Input from Layer 3",
+    "Result Layer 4",
+  ]
+)
+```
+
+## Output
+
+```elixir
+softmax =
+  result_layer_4
+  |> Nx.exp()
+  |> then(fn t ->
+    t |> Nx.divide(Nx.sum(t, axes: [1], keep_axes: true))
+  end)
+
+argmax =
+  result_layer_4
+  |> Nx.argmax(axis: 1)
+
+softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  result_layer_4
+  |> Nx.reshape({:auto, 10, 1, 1}),
+  argmax |> Nx.reshape({:auto, 1, 1, 1}),
+  softmax |> Nx.reshape({:auto, 10, 1, 1}),
+  softmax_log |> Nx.reshape({:auto, 10, 1, 1})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Output Layer",
+  size: [210,20,210,20,20],
+  show_meta: false,
+  cmap: :viridis,
+  labels: [
+    "Input",
+    "Result Layer 4",
+    "Result Layer 4 argmax",
+    "Result layer 4 softmax",
+    "Log(Softmax)"
+  ]
+)
+```
+
+## Evaluation
+
+```elixir
+all_parameters =
+  [
+    {"Layer 1", {16, 9}, sixteenKernels},
+    {"Layer 2", {32 * 2, 3 * 3 * 4 * 2}, thirtyTwoKernels},
+    {"Layer 3", {120, :auto}, randomMatrix_layer3},
+    {"Layer 4", {20, :auto}, randomMatrix_layer4}
+  ]
+
+cross_entropy =
+  Nx.multiply(
+    labels_one_hot
+    |> Nx.reshape({:auto, 1, 1, 1, 10}),
+    softmax_log
+    |> Nx.reshape({:auto, 1, 1, 1, 10})
+  )
+  |> Nx.sum(axes: [-1])
+  |> Nx.negate()
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  labels_one_hot |> Nx.reshape({:auto, 10, 1, 1}),
+  softmax |> Nx.reshape({:auto, 10, 1, 1}),
+  softmax_log |> Nx.reshape({:auto, 10, 1, 1}),
+  cross_entropy
+  |> Nx.reshape({1, :auto, 10, 1})
+  |> Nx.add(Nx.Constants.epsilon({:f, 32}))
+  |> Nx.log(),
+ # all_parameters
+ # |> Enum.map(&Nx.flatten(elem(&1, 2)))
+ # |> Nx.concatenate()
+ # |> Nx.reshape({1, 674, :auto, 1})
+]
+|> Enum.concat(all_parameters |> Enum.map(fn {_, {a, b}, p} -> Nx.reshape(p, {1, a, b, 1}) end))
+|> KinoZoetrope.TensorStack.new(
+  titel: "Random Matrix",
+  show_meta: false,
+  labels: [
+    "Input",
+    "Expected (One Hot)",
+    "Output Softmax",
+    "Log(Output Softmax)",
+    "Cross Entropy (all Inputs)",
+   # "all parameters"
+  ]
+|> Enum.concat(all_parameters |> Enum.map(fn {l, _, p} -> "#{l}: #{Nx.size(p)} parameters" end)),
+  legend: false,
+  cmap: :viridis,
+  size: [100,20,20,20,200,80,200,500, 100],
+  markers: [
+    %{
+      attrs: %{
+        # SVG attributes
+        "stroke" => "magenta",
+        "stroke-width" => 2,
+        "fill" => "none",
+        "rx" => 10,
+        "ry" => 10
+      },
+      # indices of the images to add the markers to, here the first (0) and second (1) image
+      for: [4],
+      # list of {x,y} coordinates. The length if the list
+      # should match the number of frames of the image
+      points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
+    }
+  ]
+)
+```
+
+```elixir
+labels_one_hot |> Nx.shape()
+```
+
+## Put everything together
+
+```elixir
+defmodule Handwriting do
+  import Nx.Defn
+
+  defn loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot) do
+    output =
+      data
+      |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.max(0)
+      |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+      |> Nx.conv(thirtyTwoKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.max(0)
+      |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+      |> Nx.reshape({:auto, 7 * 7 * 32})
+      |> Nx.dot(matrixA)
+      |> Nx.max(0)
+      |> Nx.dot(matrixB)
+      |> Nx.exp()
+
+    loss =
+      output
+      |> Nx.divide(Nx.sum(output, axes: [1], keep_axes: true))
+      |> Nx.add(Nx.Constants.epsilon({:f, 32}))
+      |> Nx.log()
+      |> Nx.multiply(labels_one_hot)
+      |> Nx.sum(axes: [-1])
+      |> Nx.negate()
+  end
+
+  defn mean_loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot) do
+    loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot)
+    |> Nx.mean()
+  end
+end
+
+params =
+  for v <- [
+        sixteenKernels,
+        thirtyTwoKernels,
+        randomMatrix_layer3,
+        randomMatrix_layer4,
+        data,
+        labels_one_hot
+      ],
+      reduce: [] do
+    tail ->
+      [Nx.template(Nx.shape(v), Nx.type(v)) | tail]
+  end
+  |> Enum.reverse()
+
+compiled =
+  Nx.Defn.compile(
+    &Handwriting.loss/6,
+    params
+  )
+
+compiled_mean =
+  Nx.Defn.compile(
+    &Handwriting.mean_loss/6,
+    params
+  )
+
+Kino.nothing()
+```
+
+```elixir
+cross_entropy_all_at_once =
+  compiled.(
+    sixteenKernels,
+    thirtyTwoKernels,
+    randomMatrix_layer3,
+    randomMatrix_layer4,
+    data,
+    labels_one_hot
+  )
+
+Kino.nothing()
+```
+
+```elixir
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  cross_entropy_all_at_once |> Nx.reshape({1, :auto, 10, 1}),
+  all_parameters
+  |> Enum.map(&Nx.flatten(elem(&1, 2)))
+  |> Nx.concatenate()
+  |> Nx.reshape({1, 674, :auto, 1})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Random Matrix",
+  show_meta: false,
+  labels: [
+    "Original Input",
+    "Cross Entropy (all Inputs)",
+    "all parameters"
+  ],
+  legend: false,
+  markers: [
+    %{
+      attrs: %{
+        # SVG attributes
+        "stroke" => "magenta",
+        "stroke-width" => 2,
+        "fill" => "none",
+        "rx" => 10,
+        "ry" => 10
+      },
+      # indices of the images to add the markers to, here the first (0) and second (1) image
+      for: [1],
+      # list of {x,y} coordinates. The length if the list
+      # should match the number of frames of the image
+      points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
+    }
+  ]
+)
+```
+
+```elixir
+{_data_grid, k16_grad, k32_grad, mat1_grad, mat2_grad} =
+Nx.Defn.grad(
+  {
+    data,
+    sixteenKernels,
+    thirtyTwoKernels,
+    randomMatrix_layer3,
+    randomMatrix_layer4
+  },
+  fn {d, kernel16, kernel32, matrixA, matrixB} ->
+    Handwriting.mean_loss(
+      kernel16,
+      kernel32,
+      matrixA,
+      matrixB,
+      d,
+      labels_one_hot
+    )
+  end
+)
+
+Kino.nothing()
+```
+
+```elixir
+[
+  sixteenKernels
+  |> Nx.reshape({1, :auto, 3, 3})
+  |> Grid.make_grid(grid_size: 4)
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  k16_grad
+  |> Nx.reshape({1, :auto, 3, 3})
+  |> Grid.make_grid(grid_size: 4)
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  thirtyTwoKernels
+  |> Nx.reshape({1, :auto, 3, 3})
+  |> Grid.make_grid(grid_size: 16)
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  k32_grad
+  |> Nx.reshape({1, :auto, 3, 3})
+  |> Grid.make_grid(grid_size: 16)
+  |> Nx.transpose(axes: [0, 2, 3, 1]),
+  randomMatrix_layer3
+  |> Nx.reshape({1, 120, :auto, 1}),
+  mat1_grad
+  |> Nx.reshape({1, 120, :auto, 1}),
+  randomMatrix_layer4 |> Nx.reshape({1, :auto, 120, 1}),
+  mat2_grad |> Nx.reshape({1, :auto, 120, 1})
+]
+|> KinoZoetrope.TensorStack.new(
+  size: [150, 150, 250, 250, 700, 700, 700, 700],
+  show_meta: false,
+  titel: "Gradients",
+  labels: [
+    "16 3x3 Kernels (Layer 1)",
+    "16 3x3 Kernel Gradients",
+    "32*16 3x3 Kernels (Layer 2)",
+    "32*16 3x3 Kernels Graidents (Layer 2)",
+    "Matrix A (Layer 3)",
+    "Matrix A Gradient (Layer 3)",
+    "Matrix B  (Layer 4)",
+    "Matrix B Gradient (Layer 4)"
+  ]
+)
+```
