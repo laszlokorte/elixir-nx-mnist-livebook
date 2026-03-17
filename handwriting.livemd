@@ -157,14 +157,17 @@ result1 = Nx.conv(data, bothKernels, padding: :same)
 ```elixir
 key = Nx.Random.key(0)
 sixteenKernels = Nx.Random.uniform(key, shape: {16, 1, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
+sixteenBiases = Nx.Random.uniform(key, shape: {1, 16, 1, 1}) |> elem(0) |> Nx.subtract(0.5)
 
-sixteenKernels
-|> Nx.transpose(axes: [0, 2, 3, 1])
-|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels")
+[
+  sixteenBiases |> Nx.transpose(axes: [1, 0, 2, 3]),
+  sixteenKernels |> Nx.transpose(axes: [0, 2, 3, 1])
+]
+|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels", labels: ["Bias", "Weights"])
 ```
 
 ```elixir
-result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same)
+result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same) |> Nx.add(sixteenBiases)
 
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1])
@@ -278,6 +281,7 @@ All the (14 * 14 * 16 = 56 * 56) values calculated by Layer 1 are passed to Laye
 # Generate 32 kernels of size 16x3x3 (3x3 across width*height and across all 16 channels)
 key = Nx.Random.key(1)
 thirtyTwoKernels = Nx.Random.uniform(key, shape: {32, 16, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
+thirtyTwoBiases = Nx.Random.uniform(key, shape: {1, 32, 1, 1}) |> elem(0) |> Nx.subtract(0.5)
 
 Nx.shape(thirtyTwoKernels)
 ```
@@ -285,19 +289,24 @@ Nx.shape(thirtyTwoKernels)
 Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 times as large. Lets plot all the kernels channels values:
 
 ```elixir
-for c <- 0..15 do
-  Nx.slice_along_axis(thirtyTwoKernels, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
-end
+[
+  thirtyTwoBiases|> Nx.transpose(axes: [1, 0, 2, 3])
+  | for c <- 0..15 do
+      Nx.slice_along_axis(thirtyTwoKernels, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
+    end
+]
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
   show_meta: false,
   size: 80,
   legend: false,
-  labels:
-    for(
-      c <- 1..16,
-      do: "Kernel channel #{c}"
-    )
+  labels: [
+    "Bias"
+    | for(
+        c <- 1..16,
+        do: "Kernel channel #{c}"
+      )
+  ]
 )
 ```
 
@@ -381,8 +390,6 @@ result_layer_2_relu_max_pooled =
 The calculations of Layer 2 are done. Be can reshape all the resulting values into 2D grid to look at all of them at once:
 
 ```elixir
-
-
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1]),
   result_layer_2_relu_max_pooled |> Grid.make_grid() |> Nx.transpose(axes: [0, 2, 3, 1])
@@ -411,15 +418,22 @@ key = Nx.Random.key(2)
 randomMatrix_layer3 =
   Nx.Random.uniform(key, shape: {32 * 7 * 7, 120}) |> elem(0) |> Nx.subtract(0.5)
 
-randomMatrix_layer3
-|> Nx.reshape({1, 120, :auto, 1})
+bias_layer3 =
+  Nx.Random.uniform(key, shape: {1, 120}) |> elem(0) |> Nx.subtract(0.5)
+
+[
+  bias_layer3 
+  |> Nx.reshape({1, 10, 12, 1}),
+  randomMatrix_layer3
+  |> Nx.reshape({1, 120, :auto, 1})
+]
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 3 Weight Matrix",
-  size: 850,
+  size: [100, 800],
   show_meta: true,
   legend: false,
   cmap: :viridis,
-  labels: ["Matrix Values"]
+  labels: ["Bias", "Matrix Values"]
 )
 ```
 
@@ -433,7 +447,9 @@ result_layer_2_relu_max_pooled_flatten =
   result_layer_2_relu_max_pooled |> Nx.reshape({:auto, 7 * 7 * 32})
 
 result_layer_3 =
-  result_layer_2_relu_max_pooled_flatten |> Nx.dot(randomMatrix_layer3)
+  result_layer_2_relu_max_pooled_flatten
+  |> Nx.dot(randomMatrix_layer3)
+  |> Nx.add(bias_layer3)
 
 Nx.shape(result_layer_3)
 ```
@@ -496,16 +512,21 @@ This means we need 120 * 10 = 1200 weight-values, or a 120 * 10 matrix:
 ```elixir
 key = Nx.Random.key(2)
 randomMatrix_layer4 = Nx.Random.uniform(key, shape: {120, 10}) |> elem(0) |> Nx.subtract(0.5)
+bias_layer4 = Nx.Random.uniform(key, shape: {10}) |> elem(0) |> Nx.subtract(0.5)
 
-randomMatrix_layer4
-|> Nx.reshape({1, :auto, 120, 1})
+[
+  bias_layer4
+  |> Nx.reshape({1, 10, 1, 1}),
+  randomMatrix_layer4
+  |> Nx.reshape({1, :auto, 120, 1})
+]
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 4 Weight Matrix",
-  size: 850,
+  size: [10, 600],
   show_meta: true,
   cmap: :viridis,
   legend: false,
-  labels: ["Values"]
+  labels: ["Bias", "Weights"]
 )
 ```
 
@@ -513,7 +534,9 @@ The matrix multiplication done by Layer 4 produces only 10 values for each initi
 
 ```elixir
 result_layer_4 =
-  result_layer_3_relu |> Nx.dot(randomMatrix_layer4)
+  result_layer_3_relu
+  |> Nx.dot(randomMatrix_layer4)
+  |> Nx.add(bias_layer4)
 
 Nx.shape(result_layer_4)
 ```
@@ -607,10 +630,14 @@ Lets to the calculation and plot everything together.
 ```elixir
 all_parameters =
   [
-    {"Layer 1", {16, 9}, sixteenKernels},
-    {"Layer 2", {32 * 2, 3 * 3 * 4 * 2}, thirtyTwoKernels},
-    {"Layer 3", {120, :auto}, randomMatrix_layer3},
-    {"Layer 4", {20, :auto}, randomMatrix_layer4}
+    {"Layer 1 weights", {16, 9}, sixteenKernels},
+    {"Layer 1 bias", {16, 1}, sixteenBiases},
+    {"Layer 2 weights", {32 * 2, 3 * 3 * 4 * 2}, thirtyTwoKernels},
+    {"Layer 2 bias", {8, 4}, thirtyTwoBiases},
+    {"Layer 3 weights", {120, :auto}, randomMatrix_layer3},
+    {"Layer 3 bias", {10, 12}, bias_layer3},
+    {"Layer 4 weights", {20, :auto}, randomMatrix_layer4},
+    {"Layer 4 bias", {10, 1}, bias_layer4}
   ]
 
 cross_entropy =
@@ -652,11 +679,11 @@ cross_entropy =
     ]
     |> Enum.concat(
       all_parameters
-      |> Enum.map(fn {l, _, p} -> "#{l} parameters (total #{Nx.size(p)})" end)
+      |> Enum.map(fn {l, _, p} -> "#{l} (total #{Nx.size(p)})" end)
     ),
   legend: false,
   cmap: :viridis,
-  size: [100, 20, 20, 20, 200, 80, 200, 500, 100],
+  size: [100, 20, 20, 20, 200, 80, 10, 200, 10, 500, 10, 100, 10],
   markers: [
     %{
       attrs: %{
@@ -689,19 +716,23 @@ Now that we have unsterstood each step of the calculation we can but everything 
 defmodule Handwriting do
   import Nx.Defn
 
-  defn loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot) do
+  defn loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot) do
     output =
       data
       |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.add(sixteenBiases)
       |> Nx.max(0)
       |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
       |> Nx.conv(thirtyTwoKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.add(thirtyTwoBiases)
       |> Nx.max(0)
       |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
       |> Nx.reshape({:auto, 7 * 7 * 32})
       |> Nx.dot(matrixA)
+      |> Nx.add(matABias)
       |> Nx.max(0)
       |> Nx.dot(matrixB)
+      |> Nx.add(matBBias)
 
     output_exp = Nx.exp(output)
 
@@ -715,8 +746,8 @@ defmodule Handwriting do
       |> Nx.negate()
   end
 
-  defn mean_loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot) do
-    loss(sixteenKernels, thirtyTwoKernels, matrixA, matrixB, data, labels_one_hot)
+  defn mean_loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot) do
+    loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot)
     |> Nx.mean()
   end
 end
@@ -730,9 +761,13 @@ We can use `Nx.Defn` to JIT compile the calculation:
 params =
   for v <- [
         sixteenKernels,
+        sixteenBiases,
         thirtyTwoKernels,
+        thirtyTwoBiases,
         randomMatrix_layer3,
+        bias_layer3,
         randomMatrix_layer4,
+        bias_layer4,
         data,
         labels_one_hot
       ],
@@ -744,13 +779,13 @@ params =
 
 compiled =
   Nx.Defn.compile(
-    &Handwriting.loss/6,
+    &Handwriting.loss/10,
     params
   )
 
 compiled_mean =
   Nx.Defn.compile(
-    &Handwriting.mean_loss/6,
+    &Handwriting.mean_loss/10,
     params
   )
 ```
@@ -761,9 +796,13 @@ And then run it again on our dataset:
 cross_entropy_all_at_once =
   compiled.(
     sixteenKernels,
+    sixteenBiases,
     thirtyTwoKernels,
+    thirtyTwoBiases,
     randomMatrix_layer3,
+    bias_layer3,
     randomMatrix_layer4,
+    bias_layer4,
     data,
     labels_one_hot
   )
@@ -782,7 +821,7 @@ all_params_combined =
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1]),
   cross_entropy_all_at_once |> Nx.reshape({1, :auto, 10, 1}),
-  all_params_combined |> Nx.reshape({1, div(674, 2), :auto, 1})
+  all_params_combined |> Nx.reshape({1, 10, :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
   titel: "Random Matrix",
@@ -823,21 +862,30 @@ This multi dimensional derivative/slope is called gradient.
 Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
 
 ```elixir
-{_data_grid, k16_grad, k32_grad, mat1_grad, mat2_grad} =
+{_data_grid, k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad,
+ mat2_bias_grad} =
   Nx.Defn.grad(
     {
       data,
       sixteenKernels,
+      sixteenBiases,
       thirtyTwoKernels,
+      thirtyTwoBiases,
       randomMatrix_layer3,
-      randomMatrix_layer4
+      bias_layer3,
+      randomMatrix_layer4,
+      bias_layer4
     },
-    fn {d, kernel16, kernel32, matrixA, matrixB} ->
+    fn {d, kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b} ->
       Handwriting.mean_loss(
         kernel16,
+        b16,
         kernel32,
+        b32,
         matrixA,
+        m1b,
         matrixB,
+        m2b,
         d,
         labels_one_hot
       )
@@ -903,25 +951,33 @@ Stream.unfold(
   # start with random weight values
   {
     sixteenKernels,
+    sixteenBiases,
     thirtyTwoKernels,
+    thirtyTwoBiases,
     randomMatrix_layer3,
-    randomMatrix_layer4
+    bias_layer3,
+    randomMatrix_layer4,
+    bias_layer4,
   },
   # iteration step
-  fn {layer1, layer2, layer3, layer4} ->
+  fn {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4} ->
     # calculate the loss value and all gradients
-    {loss, {_data, layer1_grad, layer2_grad, layer3_grad, layer4_grad}} =
+    {loss, {_data, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad, bl4_grad}} =
       Nx.Defn.value_and_grad(
         # the values for that we want the gradients
-        {data, layer1, layer2, layer3, layer4},
+        {data, layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
         # need to by piped through the value_and_grad function
-        fn {d, kernel16, kernel32, matrixA, matrixB} ->
+        fn {d, kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2} ->
           # calculate the mean loss value across all input images
           Handwriting.mean_loss(
             kernel16,
+            b16,
             kernel32,
+            b32,
             matrixA,
+            bm1,
             matrixB,
+            bm2,
             d,
             labels_one_hot
           )
@@ -933,13 +989,17 @@ Stream.unfold(
      {
        # subtract the gradient from the parameters (in small steps) for next step
        layer1 |> Nx.subtract(layer1_grad |> Nx.multiply(learning_rate)),
+       bl1 |> Nx.subtract(bl1_grad |> Nx.multiply(learning_rate)),
        layer2 |> Nx.subtract(layer2_grad |> Nx.multiply(learning_rate)),
+       bl2 |> Nx.subtract(bl2_grad |> Nx.multiply(learning_rate)),
        layer3 |> Nx.subtract(layer3_grad |> Nx.multiply(learning_rate)),
-       layer4 |> Nx.subtract(layer4_grad |> Nx.multiply(learning_rate))
+       bl3 |> Nx.subtract(bl3_grad |> Nx.multiply(learning_rate)),
+       layer4 |> Nx.subtract(layer4_grad |> Nx.multiply(learning_rate)),
+       bl4 |> Nx.subtract(bl4_grad |> Nx.multiply(learning_rate)),
      }}
   end
 )
-|> Enum.take(0)
+|> Enum.take(1)
 
 # [
 #   #Nx.Tensor<
