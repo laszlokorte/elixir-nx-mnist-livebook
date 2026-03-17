@@ -1,13 +1,15 @@
-<!-- livebook:{"file_entries":[{"name":"dump_conv1.bias.txt","type":"attachment"},{"name":"dump_conv1.weight.txt","type":"attachment"},{"name":"dump_conv2.bias.txt","type":"attachment"},{"name":"dump_conv2.weight.txt","type":"attachment"},{"name":"dump_fc1.bias.txt","type":"attachment"},{"name":"dump_fc1.weight.txt","type":"attachment"},{"name":"dump_fc2.bias.txt","type":"attachment"},{"name":"dump_fc2.weight.txt","type":"attachment"},{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"}]} -->
+<!-- livebook:{"file_entries":[{"name":"X_test.npy","type":"attachment"},{"name":"X_train.npy","type":"attachment"},{"name":"dump_conv1.bias.txt","type":"attachment"},{"name":"dump_conv1.weight.txt","type":"attachment"},{"name":"dump_conv2.bias.txt","type":"attachment"},{"name":"dump_conv2.weight.txt","type":"attachment"},{"name":"dump_fc1.bias.txt","type":"attachment"},{"name":"dump_fc1.weight.txt","type":"attachment"},{"name":"dump_fc2.bias.txt","type":"attachment"},{"name":"dump_fc2.weight.txt","type":"attachment"},{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"},{"name":"y_test.npy","type":"attachment"},{"name":"y_train.npy","type":"attachment"}]} -->
 
 # Handwritten Digit Recognition
 
 ```elixir
 Mix.install([
   {:nx, "~> 0.11.0"},
-  {:kino_zoetrope, "~> 0.18.0"},
+  {:kino_zoetrope, "~> 0.19.0"},
   {:kino_rewind, "~> 0.1.0"},
-  {:csv, "~> 3.2"}
+  {:csv, "~> 3.2"},
+  {:pythonx, "~> 0.4.2"},
+  {:kino_pythonx, "~> 0.1.0"}
 ])
 ```
 
@@ -61,7 +63,8 @@ labels_one_hot =
 ]
 |> KinoZoetrope.TensorStack.new(
   titel: "Handwritten digits",
-  labels: ["Bitmap", "Label", "Labels (One Hot)"]
+  labels: ["Bitmap", "Label", "Labels (One Hot)"],
+  frame_label: "Input Image"
 )
 ```
 
@@ -147,7 +150,8 @@ result1 = Nx.conv(data, bothKernels, padding: :same)
     "Vertical Edges",
     "Blurred",
     "Hor/Ver/Blur as RGB"
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -162,7 +166,11 @@ sixteenBiases = Nx.Random.uniform(key, shape: {1, 16, 1, 1}) |> elem(0) |> Nx.su
   sixteenBiases |> Nx.transpose(axes: [1, 0, 2, 3]),
   sixteenKernels |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
-|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels", labels: ["Bias", "Weights"])
+|> KinoZoetrope.TensorStack.new(
+  titel: "16 Random kernels",
+  labels: ["Bias", "Weights"],
+  frame_label: "Kernel"
+)
 ```
 
 ```elixir
@@ -178,7 +186,8 @@ result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same) |> Nx.add(sixteen
   titel: "Layer 1 Convolution results",
   cmap: :viridis,
   show_meta: false,
-  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")]
+  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")],
+  frame_label: "Input Image"
 )
 ```
 
@@ -198,7 +207,8 @@ result_layer_1_relu = Nx.max(0, result_layer_1)
   titel: "Layer 1 Relu results (max(0, x))",
   cmap: :viridis,
   show_meta: false,
-  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")]
+  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")],
+  frame_label: "Input Image"
 )
 ```
 
@@ -220,7 +230,8 @@ result_layer_1_relu_max_pooled =
   titel: "Layer 1 Pooling Results",
   cmap: :viridis,
   show_meta: false,
-  labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")]
+  labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")],
+  frame_label: "Input Image"
 )
 ```
 
@@ -268,7 +279,8 @@ result_layer_1_relu_max_pooled_flatten =
   titel: "Layer 1 Pooling flattend into 2d array",
   labels: ["Original Input", "Result Layer 1  2D-Flattened"],
   size: [200, 400],
-  cmap: :viridis
+  cmap: :viridis,
+  frame_label: "Input Image"
 )
 ```
 
@@ -305,7 +317,8 @@ Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 time
         c <- 1..16,
         do: "Kernel channel #{c}"
       )
-  ]
+  ],
+  frame_label: "Kernel"
 )
 ```
 
@@ -331,7 +344,8 @@ Lets inspect the result visually. At this point, for each initial input we have 
   cmap: :viridis,
   show_meta: false,
   legend: false,
-  labels: ["Original Input" | for(c <- 1..32, do: "Result for kernel #{c}")]
+  labels: ["Original Input" | for(c <- 1..32, do: "Result for kernel #{c}")],
+  frame_label: "Input Image"
 )
 ```
 
@@ -354,7 +368,8 @@ result_layer_2_relu = Nx.max(0, result_layer_2)
   labels: [
     "Original Input"
     | for(c <- 1..32, do: "Result K#{c} Relu")
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -382,7 +397,8 @@ result_layer_2_relu_max_pooled =
   labels: [
     "Original Input"
     | for(c <- 1..32, do: "Result  K_#{c} Relu MaxPooled")
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -397,7 +413,8 @@ The calculations of Layer 2 are done. Be can reshape all the resulting values in
   titel: "Layer 2 Pooling flattend into 2D array",
   labels: ["Original Input", "Result Layer 2 Flattened"],
   cmap: :viridis,
-  size: [100, 400]
+  size: [100, 400],
+  frame_label: "Input Image"
 )
 ```
 
@@ -472,7 +489,8 @@ Layer 3 produces just a flat list of 100 numbers but when plotting them its nice
   labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix Multiplication"],
   cmap: :viridis,
   legend: false,
-  size: [150, 300, 250]
+  size: [150, 300, 250],
+  frame_label: "Input Image"
 )
 ```
 
@@ -497,7 +515,8 @@ result_layer_3_relu = Nx.max(0, result_layer_3)
   cmap: :viridis,
   legend: [false, false, true, true],
   size: [100, 400, 200, 200],
-  labels: ["Original Input", "Input from Layer 2", "Before Relu", "Result Layer 3 Relu"]
+  labels: ["Original Input", "Input from Layer 2", "Before Relu", "Result Layer 3 Relu"],
+  frame_label: "Input Image"
 )
 ```
 
@@ -561,7 +580,8 @@ Since all the convolution kernels and weight matrix values were randomly generat
     "Input",
     "Input from Layer 3",
     "Result Layer 4"
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -604,7 +624,8 @@ softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
     "Result Layer 4 argmax",
     "Result layer 4 softmax",
     "Log(Softmax)"
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -680,7 +701,7 @@ cross_entropy =
     ),
   legend: false,
   cmap: :viridis,
-  size: [100, 20, 20, 20, 200, 80, 10, 200, 10, 500, 10, 100, 10],
+  size: [100, 20, 20, 20, 200, 80, 10, 200, 50, 500, 50, 100, 10],
   markers: [
     %{
       attrs: %{
@@ -697,7 +718,8 @@ cross_entropy =
       # should match the number of frames of the image
       points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
     }
-  ]
+  ],
+  frame_label: "Input Image"
 )
 ```
 
@@ -879,7 +901,8 @@ all_params_combined =
       # should match the number of frames of the image
       points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
     }
-  ]
+  ],
+  frame_label: "Input image"
 )
 ```
 
@@ -1225,7 +1248,7 @@ all_loss =
 |> KinoZoetrope.TensorStack.new(
   titel: "Random Matrix",
   show_meta: false,
-  size: [300, 100, 100, 100],
+  size: [300, 100, 400, 100],
   labels: [
     "Original Input",
     "Prediction Distribution",
@@ -1271,8 +1294,9 @@ all_loss =
         "stroke-width" => 2,
         "fill" => "none",
         "rx" => 10,
-        "ry" => 10
+        "ry" => 10,
       },
+      faded: true,
       # indices of the images to add the markers to, here the first (0) and second (1) image
       for: [1],
       # list of {x,y} coordinates. The length if the list
