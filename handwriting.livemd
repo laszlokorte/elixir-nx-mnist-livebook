@@ -94,7 +94,7 @@ allKernels =
 |> KinoZoetrope.TensorStack.new(
   titel: "4 Example Kernels",
   size: 100,
-  labels: ["Horizontal", "Vertical", "blur", "All three kernels"]
+  labels: ["Horizontal", "Vertical", "blur", "All three kernels stacked"]
 )
 ```
 
@@ -1204,9 +1204,8 @@ predictions =
     |> Nx.reshape({10, 120})
     |> Nx.transpose(axes: [1, 0]),
     lwb |> Nx.reshape({10}),
-    data
+    data 
   )
-
 
 all_loss =
   Handwriting.loss(
@@ -1230,8 +1229,8 @@ all_loss =
     |> Nx.reshape({10, 120})
     |> Nx.transpose(axes: [1, 0]),
     lwb |> Nx.reshape({10}),
-    data,
-    labels
+    data ,
+    labels_one_hot
   )
 ```
 
