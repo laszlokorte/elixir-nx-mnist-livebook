@@ -126,7 +126,7 @@ result1 = Nx.conv(data, bothKernels, padding: :same)
 
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1])
-  | for c <- 0..2,
+  | for c <- 2..0//-1,
         reduce: [
           result1
           |> Nx.reshape({:auto, 3, 28, 28})
@@ -177,6 +177,9 @@ result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same)
 )
 ```
 
+Next we discard all negative values by setting them to 0. 
+This is done to do a non-linear operation (ie something other than a matrix multiplication, ie. something other than a weighted sum). This adds some spice. Chaining only linear operations together yield the same a result as a single linear operation.
+
 ```elixir
 result_layer_1_relu = Nx.max(0, result_layer_1)
 
@@ -193,6 +196,9 @@ result_layer_1_relu = Nx.max(0, result_layer_1)
 )
 ```
 
+Next we downsample the 28x28 images to 14x14 via maxpooling.
+Maxpooling chunks the images into 2x2 patches and keeps only the largest of its values.
+
 ```elixir
 result_layer_1_relu_max_pooled =
   result_layer_1_relu |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
@@ -207,9 +213,15 @@ result_layer_1_relu_max_pooled =
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 1 Pooling Results",
   cmap: :viridis,
-  labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu max pooled")]
+  labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")]
 )
 ```
+
+## Intermission: Helper Function
+
+Before we start with the next layer of calculations, lets define a helper function for cleaner plotting of our vectors.
+
+The `make_grid` function will take a tensor of shape `{b, c, w, h}` and turn in into a vector of shape `{b, 1, w*c/4, h*4}`. It moves the values from the different channels into the spatial (width, height) dimensions for us to look at multiple channels at once.
 
 ```elixir
 defmodule Grid do
@@ -224,17 +236,16 @@ defmodule Grid do
     {batch, _channels, w, h} = Nx.shape(tensor)
 
     tensor
-    # {batch, 4,4,14,14}
     |> Nx.reshape({batch, grid_size, :auto, w, h})
-    # {batch, 4,14,4,14}
     |> Nx.transpose(axes: [0, 1, 3, 2, 4])
-    # {batch,1,56,56}
     |> Nx.reshape({batch, 1, grid_size * w, :auto})
   end
 end
 
 Kino.nothing()
 ```
+
+Now by using our helper function we can look at the full output (14 * 14 * 16 = 56x56 values) of layer 1 for each input:
 
 ```elixir
 result_layer_1_relu_max_pooled_flatten =
@@ -256,12 +267,17 @@ result_layer_1_relu_max_pooled_flatten =
 
 ## Layer 2
 
+All the (14 * 14 * 16 = 56 * 56) values calculated by Layer 1 are passed to Layer 2. Layer 2 will use 32 more kernels to convolve the 16 channels produced by Layer 1.
+
 ```elixir
+# Generate 32 kernels of size 16x3x3 (3x3 across width*height and across all 16 channels)
 key = Nx.Random.key(1)
 thirtyTwoKernels = Nx.Random.uniform(key, shape: {32, 16, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
 
 Nx.shape(thirtyTwoKernels)
 ```
+
+Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 times as large. Lets plot all the kernels channels values:
 
 ```elixir
 for c <- 0..15 do
@@ -277,11 +293,15 @@ end
 )
 ```
 
+Now lets apply the kernels to the output of Layer 1. The convolution produces tensors / images that are 14*14 pixels wide and high and have 32 channels per channel. (32 channels because we had 32 kernels, each producing one value)
+
 ```elixir
 result_layer_2 = Nx.conv(result_layer_1_relu_max_pooled, thirtyTwoKernels, padding: :same)
 
 Nx.shape(result_layer_2)
 ```
+
+Lets inspect the result visually. At this point, for each initial input we have 32 intermediate resulting images to look at.
 
 ```elixir
 [
@@ -298,6 +318,8 @@ Nx.shape(result_layer_2)
   labels: ["Original Input" | for(c <- 1..32, do: "Result for kernel #{c}")]
 )
 ```
+
+Rinse and repeat: discard negative values by setting them to 0. This is a per-pixel operation not chaning the number of pixels. And looking at the results again:
 
 ```elixir
 result_layer_2_relu = Nx.max(0, result_layer_2)
@@ -319,6 +341,11 @@ result_layer_2_relu = Nx.max(0, result_layer_2)
   ]
 )
 ```
+
+As in Layer 1 we apply some max-pooling again to reduce the number of pixels.
+From each 2x2 chunk of neighbors we only keep the largest value again.
+
+Be plot the results again and can see that each channel has only 7x7 pixels.
 
 ```elixir
 result_layer_2_relu_max_pooled =
@@ -343,9 +370,10 @@ result_layer_2_relu_max_pooled =
 )
 ```
 
+The calculations of Layer 2 are done. Be can reshape all the resulting values into 2D grid to look at all of them at once:
+
 ```elixir
-result_layer_2_relu_max_pooled_flatten =
-  result_layer_2_relu_max_pooled |> Nx.reshape({:auto, 7 * 7 * 32})
+
 
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1]),
@@ -358,6 +386,16 @@ result_layer_2_relu_max_pooled_flatten =
   size: [100, 400]
 )
 ```
+
+## Layer 3
+
+The next layer (Layer 3) is a different kind of layer. It does not convolve the tensors with a kernel but just calculates a weighted some across all pixels (a vector dot product). It does so with 120 different list of weights. Each list has as many weights as the total number of input values.
+
+From layer 2 we expect to get (7 * 7 * 32 = 1568) values. Layer 3 shall product 120 resulting values by weighting and summing the 1568 values in 100 different ways.
+
+So Layer 3 needs (120 * 1568 = 188160) different coefficients to multiply with.
+
+We first need to create tensor to contain these numbers. We can also plot this 2D matrix:
 
 ```elixir
 key = Nx.Random.key(2)
@@ -377,12 +415,24 @@ randomMatrix_layer3
 )
 ```
 
+Next we need to multiply this matrix via matrix multiplication with the values we got from Layer 2.
+From the perspective of Layer 3 all the pixels That Layer 2 produces are just a very long 1D-vector of numbers (7 * 7 * 32).
+
+The result of Layer 2 is then just a list of 100 numbers per initial input.
+
 ```elixir
+result_layer_2_relu_max_pooled_flatten =
+  result_layer_2_relu_max_pooled |> Nx.reshape({:auto, 7 * 7 * 32})
+
 result_layer_3 =
   result_layer_2_relu_max_pooled_flatten |> Nx.dot(randomMatrix_layer3)
 
-Nx.shape(result_layer_3 )
+Nx.shape(result_layer_3)
 ```
+
+Lets plot the result so far together with the initial input and the values we got from Layer 2.
+
+Layer 3 produces just a flat list of 100 numbers but when plotting them its nice to look at if we reshape them into a 10x10 grid.
 
 ```elixir
 [
@@ -402,6 +452,8 @@ Nx.shape(result_layer_3 )
   size: [150, 300, 250]
 )
 ```
+
+Next we again discard all negative values by setting them to 0. And plot the result again, just for fun
 
 ```elixir
 result_layer_3_relu = Nx.max(0, result_layer_3)
@@ -428,6 +480,11 @@ result_layer_3_relu = Nx.max(0, result_layer_3)
 
 ## Layer 4
 
+Layer 4 does the same as Layer 3: Take all values as as flat list and multiply them by a bunch of weights to produce a new list of values.
+
+We get 120 values from Layer 3 and want to produce only 10 different output values.
+This means we need 120 * 10 = 1200 weight-values, or a 120 * 10 matrix:
+
 ```elixir
 key = Nx.Random.key(2)
 randomMatrix_layer4 = Nx.Random.uniform(key, shape: {120, 10}) |> elem(0) |> Nx.subtract(0.5)
@@ -444,12 +501,18 @@ randomMatrix_layer4
 )
 ```
 
+The matrix multiplication done by Layer 4 produces only 10 values for each initial input image.
+
 ```elixir
 result_layer_4 =
   result_layer_3_relu |> Nx.dot(randomMatrix_layer4)
 
 Nx.shape(result_layer_4)
 ```
+
+These 10 values shall represent a probability distribution describing the probability of the input image containing the respective value between 0 and 9.
+
+Since all the convolution kernels and weight matrix values were randomly generated we can expect the resulting 10-element-vector to also just containing 10 pretty random values.
 
 ```elixir
 
@@ -475,6 +538,10 @@ Nx.shape(result_layer_4)
 ```
 
 ## Output
+
+Even if the output vector does not contain useful results yet, we still want to make sure that at least the vector formally represents a probability distribution summing to 1. Therefor we normalie the vector via softmax.
+
+We also can use `Nx.argmax` to pick the index with the largest value from the vector.
 
 ```elixir
 softmax =
@@ -515,6 +582,20 @@ softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
 
 ## Evaluation
 
+To actuall train our network we need a way to compare the output agains the expected value to measure the output quality. Is works kind of like test-driven-development. We need to write a unit-test, but one that can not only fail or pass, but tell how strongly it failed.
+
+This can then be used to guide the computer to a better solution (ie. better values for our kernels and weight matrices)
+
+This test-case is called lost function and this the most important part of the whole process. A good loss function will make the network learn. A bad loss function will lead to bad results that do not improve.
+
+In our case the loss-function is a binary function that takes the expected label and the output of the network and produces a number telling the difference (0.0 means the output matches the expected label value, and large loss values mean that the output differs a lot from the actual label).
+
+In our case the label (one-hot encoded 10-element-vector) and the output (also 10-element vector) can both be seen as probability distribution.
+
+There are many ways to measure the difference between two distributions. A simple one is called cross-entropy. It can be written as `-dot(log(a), log(b))`, ie we negative sum of the pairwise product of elementwise logarithm. It produces a single non-negative value that is 0 if the vectors match and greater otherwise.
+
+Lets to the calculation and plot everything together.
+
 ```elixir
 all_parameters =
   [
@@ -542,28 +623,32 @@ cross_entropy =
   cross_entropy
   |> Nx.reshape({1, :auto, 10, 1})
   |> Nx.add(Nx.Constants.epsilon({:f, 32}))
-  |> Nx.log(),
- # all_parameters
- # |> Enum.map(&Nx.flatten(elem(&1, 2)))
- # |> Nx.concatenate()
- # |> Nx.reshape({1, 674, :auto, 1})
+  |> Nx.log()
+  # all_parameters
+  # |> Enum.map(&Nx.flatten(elem(&1, 2)))
+  # |> Nx.concatenate()
+  # |> Nx.reshape({1, 674, :auto, 1})
 ]
 |> Enum.concat(all_parameters |> Enum.map(fn {_, {a, b}, p} -> Nx.reshape(p, {1, a, b, 1}) end))
 |> KinoZoetrope.TensorStack.new(
   titel: "Random Matrix",
   show_meta: false,
-  labels: [
-    "Input",
-    "Expected (One Hot)",
-    "Output Softmax",
-    "Log(Output Softmax)",
-    "Cross Entropy (all Inputs)",
-   # "all parameters"
-  ]
-|> Enum.concat(all_parameters |> Enum.map(fn {l, _, p} -> "#{l}: #{Nx.size(p)} parameters" end)),
+  labels:
+    [
+      "Input",
+      "Expected (One Hot)",
+      "Output Softmax",
+      "Log(Output Softmax)",
+      "Cross Entropy (all Inputs)"
+      # "all parameters"
+    ]
+    |> Enum.concat(
+      all_parameters
+      |> Enum.map(fn {l, _, p} -> "#{l}: #{Nx.size(p)} parameters" end)
+    ),
   legend: false,
   cmap: :viridis,
-  size: [100,20,20,20,200,80,200,500, 100],
+  size: [100, 20, 20, 20, 200, 80, 200, 500, 100],
   markers: [
     %{
       attrs: %{
@@ -590,6 +675,8 @@ labels_one_hot |> Nx.shape()
 
 ## Put everything together
 
+Now that we have unsterstood each step of the calculation we can but everything togher into a single module and see that the whole network can be expressed in merely 25 lines of code.
+
 ```elixir
 defmodule Handwriting do
   import Nx.Defn
@@ -607,11 +694,12 @@ defmodule Handwriting do
       |> Nx.dot(matrixA)
       |> Nx.max(0)
       |> Nx.dot(matrixB)
-      |> Nx.exp()
 
-    loss =
-      output
-      |> Nx.divide(Nx.sum(output, axes: [1], keep_axes: true))
+    output_exp = Nx.exp(output)
+
+    _loss =
+      output_exp
+      |> Nx.divide(Nx.sum(output_exp, axes: [1], keep_axes: true))
       |> Nx.add(Nx.Constants.epsilon({:f, 32}))
       |> Nx.log()
       |> Nx.multiply(labels_one_hot)
@@ -625,6 +713,12 @@ defmodule Handwriting do
   end
 end
 
+Kino.nothing()
+```
+
+We can use `Nx.Defn` to JIT compile the calculation:
+
+```elixir
 params =
   for v <- [
         sixteenKernels,
@@ -651,9 +745,9 @@ compiled_mean =
     &Handwriting.mean_loss/6,
     params
   )
-
-Kino.nothing()
 ```
+
+And then run it again on our dataset:
 
 ```elixir
 cross_entropy_all_at_once =
@@ -668,6 +762,8 @@ cross_entropy_all_at_once =
 
 Kino.nothing()
 ```
+
+And just for fun print the the results again, together with the input images and parameter values from all layers:
 
 ```elixir
 [
@@ -707,30 +803,40 @@ Kino.nothing()
 )
 ```
 
+For training the network to actually produce the expected results we we just need to take the partial derivative of the loss value, regarding all the parameter values. and then nudge its parameter a little bit down the the slope (ie. into the direction in which the loss is reduced most).
+
+`Nx.Defn.grad` allows to to caculate the loss value again, but instead of actually giving us the resulting loss value it gives us all the slope value for all the parameters.
+
+This multi dimensional derivative/slope is called gradient.
+
+Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
+
 ```elixir
 {_data_grid, k16_grad, k32_grad, mat1_grad, mat2_grad} =
-Nx.Defn.grad(
-  {
-    data,
-    sixteenKernels,
-    thirtyTwoKernels,
-    randomMatrix_layer3,
-    randomMatrix_layer4
-  },
-  fn {d, kernel16, kernel32, matrixA, matrixB} ->
-    Handwriting.mean_loss(
-      kernel16,
-      kernel32,
-      matrixA,
-      matrixB,
-      d,
-      labels_one_hot
-    )
-  end
-)
+  Nx.Defn.grad(
+    {
+      data,
+      sixteenKernels,
+      thirtyTwoKernels,
+      randomMatrix_layer3,
+      randomMatrix_layer4
+    },
+    fn {d, kernel16, kernel32, matrixA, matrixB} ->
+      Handwriting.mean_loss(
+        kernel16,
+        kernel32,
+        matrixA,
+        matrixB,
+        d,
+        labels_one_hot
+      )
+    end
+  )
 
 Kino.nothing()
 ```
+
+Next we can plot all the parameter valus again, together with their gradients (slope) values. Notice that there a as many gradient values as parameter values.
 
 ```elixir
 [
@@ -772,4 +878,48 @@ Kino.nothing()
     "Matrix B Gradient (Layer 4)"
   ]
 )
+```
+
+## Training Step
+
+For actually performing the training step we now need to subtract all the gradient values from all the parameter values and then run all the calculations again, with the updated parameter values.
+
+```elixir
+learning_rate = 0.001
+
+Stream.unfold(
+  {
+    sixteenKernels,
+    thirtyTwoKernels,
+    randomMatrix_layer3,
+    randomMatrix_layer4
+  },
+  fn {layer1, layer2, layer3, layer4} ->
+    {loss, {_data, layer1_grad, layer2_grad, layer3_grad, layer4_grad}} =
+      Nx.Defn.value_and_grad(
+        {data, layer1, layer2, layer3, layer4},
+        fn {d, kernel16, kernel32, matrixA, matrixB} ->
+          Handwriting.mean_loss(
+            kernel16,
+            kernel32,
+            matrixA,
+            matrixB,
+            d,
+            labels_one_hot
+          )
+        end
+      )
+
+    # output calculated loss
+    {loss,
+     {
+       # subtract the gradient from the parameters (in small steps)
+       layer1 |> Nx.subtract(layer1_grad |> Nx.multiply(learning_rate)),
+       layer2 |> Nx.subtract(layer2_grad |> Nx.multiply(learning_rate)),
+       layer3 |> Nx.subtract(layer3_grad |> Nx.multiply(learning_rate)),
+       layer4 |> Nx.subtract(layer4_grad |> Nx.multiply(learning_rate))
+     }}
+  end
+)
+|> Enum.take(1)
 ```
