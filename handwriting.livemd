@@ -1,6 +1,6 @@
 <!-- livebook:{"file_entries":[{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"}]} -->
 
-# Handwriting Recognition
+# Handwritten Digit Recognition
 
 ```elixir
 Mix.install([
@@ -49,6 +49,8 @@ labels =
   |> Nx.tensor()
   |> Nx.reshape({:auto, 1})
 
+# One-Hot-Encoding a way to encoded a intenger number as 
+# the only 1 at a position in a vector
 labels_one_hot =
   Nx.iota({10})
   |> Nx.equal(labels)
@@ -888,17 +890,23 @@ For actually performing the training step we now need to subtract all the gradie
 learning_rate = 0.001
 
 Stream.unfold(
+  # start with random weight values
   {
     sixteenKernels,
     thirtyTwoKernels,
     randomMatrix_layer3,
     randomMatrix_layer4
   },
+  # iteration step
   fn {layer1, layer2, layer3, layer4} ->
+    # calculate the loss value and all gradients
     {loss, {_data, layer1_grad, layer2_grad, layer3_grad, layer4_grad}} =
       Nx.Defn.value_and_grad(
+        # the values for that we want the gradients
         {data, layer1, layer2, layer3, layer4},
+        # need to by piped through the value_and_grad function
         fn {d, kernel16, kernel32, matrixA, matrixB} ->
+          # calculate the mean loss value across all input images
           Handwriting.mean_loss(
             kernel16,
             kernel32,
@@ -913,7 +921,7 @@ Stream.unfold(
     # output calculated loss
     {loss,
      {
-       # subtract the gradient from the parameters (in small steps)
+       # subtract the gradient from the parameters (in small steps) for next step
        layer1 |> Nx.subtract(layer1_grad |> Nx.multiply(learning_rate)),
        layer2 |> Nx.subtract(layer2_grad |> Nx.multiply(learning_rate)),
        layer3 |> Nx.subtract(layer3_grad |> Nx.multiply(learning_rate)),
@@ -921,5 +929,48 @@ Stream.unfold(
      }}
   end
 )
-|> Enum.take(1)
+|> Enum.take(0)
+
+# [
+#   #Nx.Tensor<
+#     f32
+#     13.78562
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     13.236868
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     12.755795
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     12.334583
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     11.855301
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     11.227427
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     10.616477
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     10.231294
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     9.860339
+#   >,
+#   #Nx.Tensor<
+#     f32
+#     9.520728
+#   >
+# ]
 ```
