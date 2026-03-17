@@ -175,6 +175,7 @@ result_layer_1 = Nx.conv(data, sixteenKernels, padding: :same)
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 1 Convolution results",
   cmap: :viridis,
+  show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")]
 )
 ```
@@ -194,6 +195,7 @@ result_layer_1_relu = Nx.max(0, result_layer_1)
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 1 Relu results (max(0, x))",
   cmap: :viridis,
+  show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")]
 )
 ```
@@ -215,6 +217,7 @@ result_layer_1_relu_max_pooled =
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 1 Pooling Results",
   cmap: :viridis,
+  show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")]
 )
 ```
@@ -287,6 +290,9 @@ for c <- 0..15 do
 end
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
+  show_meta: false,
+  size: 80,
+  legend: false,
   labels:
     for(
       c <- 1..16,
@@ -339,7 +345,7 @@ result_layer_2_relu = Nx.max(0, result_layer_2)
   legend: false,
   labels: [
     "Original Input"
-    | for(c <- 1..32, do: "Result kernel #{c} Relu2")
+    | for(c <- 1..32, do: "Result K#{c} Relu")
   ]
 )
 ```
@@ -448,7 +454,7 @@ Layer 3 produces just a flat list of 100 numbers but when plotting them its nice
 |> KinoZoetrope.TensorStack.new(
   titel: "Layer 3 Matrix Multiplication",
   show_meta: false,
-  labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix"],
+  labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix Multiplication"],
   cmap: :viridis,
   legend: false,
   size: [150, 300, 250]
@@ -476,7 +482,7 @@ result_layer_3_relu = Nx.max(0, result_layer_3)
   cmap: :viridis,
   legend: [false, false, true, true],
   size: [100, 400, 200, 200],
-  labels: ["Original Input", "Input from Layere 2", "Before Relu", "Result Layer 3 Relu"]
+  labels: ["Original Input", "Input from Layer 2", "Before Relu", "Result Layer 3 Relu"]
 )
 ```
 
@@ -638,15 +644,15 @@ cross_entropy =
   labels:
     [
       "Input",
-      "Expected (One Hot)",
-      "Output Softmax",
-      "Log(Output Softmax)",
+      "Expected as One Hot",
+      "Softmax(Output)",
+      "Log(Softmax(Output))",
       "Cross Entropy (all Inputs)"
       # "all parameters"
     ]
     |> Enum.concat(
       all_parameters
-      |> Enum.map(fn {l, _, p} -> "#{l}: #{Nx.size(p)} parameters" end)
+      |> Enum.map(fn {l, _, p} -> "#{l} parameters (total #{Nx.size(p)})" end)
     ),
   legend: false,
   cmap: :viridis,
@@ -768,21 +774,24 @@ Kino.nothing()
 And just for fun print the the results again, together with the input images and parameter values from all layers:
 
 ```elixir
-[
-  data |> Nx.transpose(axes: [0, 2, 3, 1]),
-  cross_entropy_all_at_once |> Nx.reshape({1, :auto, 10, 1}),
+all_params_combined =
   all_parameters
   |> Enum.map(&Nx.flatten(elem(&1, 2)))
   |> Nx.concatenate()
-  |> Nx.reshape({1, 674, :auto, 1})
+
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  cross_entropy_all_at_once |> Nx.reshape({1, :auto, 10, 1}),
+  all_params_combined |> Nx.reshape({1, div(674, 2), :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
   titel: "Random Matrix",
   show_meta: false,
+  size: [100, 100, 400],
   labels: [
     "Original Input",
     "Cross Entropy (all Inputs)",
-    "all parameters"
+    "all parameters combined (total #{Nx.size(all_params_combined)})"
   ],
   legend: false,
   markers: [
@@ -866,18 +875,19 @@ Next we can plot all the parameter valus again, together with their gradients (s
   mat2_grad |> Nx.reshape({1, :auto, 120, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  size: [150, 150, 250, 250, 700, 700, 700, 700],
+  size: [100, 100, 210, 210, 700, 700, 700, 700],
   show_meta: false,
+  legend: false,
   titel: "Gradients",
   labels: [
-    "16 3x3 Kernels (Layer 1)",
-    "16 3x3 Kernel Gradients",
-    "32*16 3x3 Kernels (Layer 2)",
-    "32*16 3x3 Kernels Graidents (Layer 2)",
-    "Matrix A (Layer 3)",
-    "Matrix A Gradient (Layer 3)",
-    "Matrix B  (Layer 4)",
-    "Matrix B Gradient (Layer 4)"
+    "16 3x3 Kernels (L1)",
+    "Gradients (L1)",
+    "32*16 3x3 Kernels (L2)",
+    "Gradients (L2)",
+    "Matrix A (L3)",
+    "Matrix A Gradient (L3)",
+    "Matrix B  (L4)",
+    "Matrix B Gradient (L4)"
   ]
 )
 ```
