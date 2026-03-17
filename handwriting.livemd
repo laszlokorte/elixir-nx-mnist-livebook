@@ -5,7 +5,7 @@
 ```elixir
 Mix.install([
   {:nx, "~> 0.11.0"},
-  {:kino_zoetrope, "~> 0.19.0"},
+  {:kino_zoetrope, "~> 0.20.0"},
   {:kino_rewind, "~> 0.1.0"},
   {:csv, "~> 3.2"},
   {:pythonx, "~> 0.4.2"},
