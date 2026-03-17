@@ -5,7 +5,7 @@
 ```elixir
 Mix.install([
   {:nx, "~> 0.11.0"},
-  {:kino_zoetrope, "~> 0.17.0"},
+  {:kino_zoetrope, "~> 0.18.0"},
   {:kino_rewind, "~> 0.1.0"},
   {:csv, "~> 3.2"}
 ])
@@ -1077,18 +1077,25 @@ Stream.unfold(
 # ]
 ```
 
+## Loading Pretrained Parameters
+
+Instead of running the training loop ourself we can load the parameters from precomputed files.
+There tensor values can just be stored and loaded as sequence of numbers. But we need to be careful to not mess up the order (row major vs column major)
+
 ```elixir
+dumped_files = [
+  {"dump_conv1.weight.txt", {16, 3, 3, 1}},
+  {"dump_conv1.bias.txt", {1, 4, 4, 1}},
+  {"dump_conv2.weight.txt", {32, 4 * 3, 4 * 3, 1}},
+  {"dump_conv2.bias.txt", {1, 4, 8, 1}},
+  {"dump_fc1.weight.txt", {1, 120, :auto, 1}},
+  {"dump_fc1.bias.txt", {1, 10, 12, 1}},
+  {"dump_fc2.weight.txt", {1, :auto, 100, 1}},
+  {"dump_fc2.bias.txt", {1, 1, 10, 1}}
+]
+
 pretrained =
-  for {d, s} <- [
-        {"dump_conv1.weight.txt", {16, 3, 3, 1}},
-        {"dump_conv1.bias.txt", {1, 4, 4, 1}},
-        {"dump_conv2.weight.txt", {32, 4 * 3, 4 * 3, 1}},
-        {"dump_conv2.bias.txt", {1, 4, 8, 1}},
-        {"dump_fc1.weight.txt", {1, 120, :auto, 1}},
-        {"dump_fc1.bias.txt", {1, 10, 12, 1}},
-        {"dump_fc2.weight.txt", {1, :auto, 100, 1}},
-        {"dump_fc2.bias.txt", {1, 1, 10, 1}}
-      ] do
+  for {d, s} <- dumped_files do
     Kino.FS.file_path(d)
     |> File.stream!()
     |> CSV.decode!()
@@ -1099,5 +1106,184 @@ pretrained =
   end
 
 pretrained
-|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels", labels: ["Bias", "Weights"])
+|> KinoZoetrope.TensorStack.new(
+  titel: "16 Random kernels",
+  cmap: :viridis,
+  labels:
+    for {d, _} <- dumped_files do
+      d
+    end
+)
+```
+
+```elixir
+defmodule HandwritingPredict do
+  import Nx.Defn
+
+  defn predict(
+         sixteenKernels,
+         sixteenBiases,
+         thirtyTwoKernels,
+         thirtyTwoBiases,
+         matrixA,
+         matABias,
+         matrixB,
+         matBBias,
+         data
+       ) do
+    output =
+      data
+      |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.add(sixteenBiases)
+      |> Nx.max(0)
+      |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+      |> Nx.conv(thirtyTwoKernels, padding: [{1, 1}, {1, 1}])
+      |> Nx.add(thirtyTwoBiases)
+      |> Nx.max(0)
+      |> Nx.window_max({1, 1, 2, 2}, strides: [1, 1, 2, 2])
+      |> Nx.reshape({:auto, 7 * 7 * 32})
+      |> Nx.dot(matrixA)
+      |> Nx.add(matABias)
+      |> Nx.max(0)
+      |> Nx.dot(matrixB)
+      |> Nx.add(matBBias)
+
+    output_exp = Nx.exp(output)
+
+    output_exp
+    |> Nx.divide(Nx.sum(output_exp, axes: [1], keep_axes: true))
+  end
+end
+```
+
+```elixir
+[l1w, l1b, l2w, l2b, l3w, l3b, l4w, lwb] = pretrained
+
+predictions =
+  HandwritingPredict.predict(
+    # l1w |> Nx.transpose(axes: [0,3,2,1]),
+    l1w
+    |> Nx.reshape({3, 3, 1, 16})
+    |> Nx.transpose(axes: [3, 2, 0, 1]),
+    l1b
+    |> Nx.reshape({1, 16, 1, 1}),
+    l2w
+    |> Nx.reshape({3, 3, 16, 32})
+    |> Nx.transpose(axes: [3, 2, 0, 1]),
+    l2b
+    |> Nx.reshape({1, 32, 1, 1}),
+    l3w
+    |> Nx.reshape({120, 1568})
+    |> Nx.transpose(axes: [1, 0]),
+    l3b
+    |> Nx.reshape({1, 120}),
+    l4w
+    |> Nx.reshape({10, 120})
+    |> Nx.transpose(axes: [1, 0]),
+    lwb |> Nx.reshape({10}),
+    data
+  )
+
+
+all_loss =
+  Handwriting.loss(
+    # l1w |> Nx.transpose(axes: [0,3,2,1]),
+    l1w
+    |> Nx.reshape({3, 3, 1, 16})
+    |> Nx.transpose(axes: [3, 2, 0, 1]),
+    l1b
+    |> Nx.reshape({1, 16, 1, 1}),
+    l2w
+    |> Nx.reshape({3, 3, 16, 32})
+    |> Nx.transpose(axes: [3, 2, 0, 1]),
+    l2b
+    |> Nx.reshape({1, 32, 1, 1}),
+    l3w
+    |> Nx.reshape({120, 1568})
+    |> Nx.transpose(axes: [1, 0]),
+    l3b
+    |> Nx.reshape({1, 120}),
+    l4w
+    |> Nx.reshape({10, 120})
+    |> Nx.transpose(axes: [1, 0]),
+    lwb |> Nx.reshape({10}),
+    data,
+    labels
+  )
+```
+
+```elixir
+[
+  data |> Nx.transpose(axes: [0, 2, 3, 1]),
+  predictions |> Nx.reshape({1, 30, 10, 1}),
+  predictions
+  |> Nx.argmax(axis: 1)
+  |> Nx.reshape({1, 30, 1, 1})
+  |> Nx.transpose(axes: [0, 2, 1, 3]),
+  all_loss |> Nx.reshape({1, :auto, 10, 1})
+]
+|> KinoZoetrope.TensorStack.new(
+  titel: "Random Matrix",
+  show_meta: false,
+  size: [300, 100, 100, 100],
+  labels: [
+    "Original Input",
+    "Prediction Distribution",
+    "Single Prediction",
+    "Loss"
+  ],
+  legend: false,
+  markers: [
+    %{
+      attrs: %{
+        # SVG attributes
+        "stroke" => "magenta",
+        "stroke-width" => 2,
+        "fill" => "none",
+        "rx" => 10,
+        "ry" => 10
+      },
+      # indices of the images to add the markers to, here the first (0) and second (1) image
+      for: [2],
+      # list of {x,y} coordinates. The length if the list
+      # should match the number of frames of the image
+      points: 0..Nx.size(labels) |> Enum.map(&{&1, 0})
+    },
+    %{
+      attrs: %{
+        # SVG attributes
+        "stroke" => "magenta",
+        "stroke-width" => 2,
+        "fill" => "none",
+        "rx" => 10,
+        "ry" => 10
+      },
+      # indices of the images to add the markers to, here the first (0) and second (1) image
+      for: [3],
+      # list of {x,y} coordinates. The length if the list
+      # should match the number of frames of the image
+      points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
+    },
+    %{
+      attrs: %{
+        # SVG attributes
+        "stroke" => "magenta",
+        "stroke-width" => 2,
+        "fill" => "none",
+        "rx" => 10,
+        "ry" => 10
+      },
+      # indices of the images to add the markers to, here the first (0) and second (1) image
+      for: [1],
+      # list of {x,y} coordinates. The length if the list
+      # should match the number of frames of the image
+      points:
+        predictions
+        |> Nx.argmax(axis: 1)
+        |> Nx.to_flat_list()
+        |> Enum.with_index()
+        |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
+    }
+  ]
+)
 ```
