@@ -25,7 +25,6 @@ csv_stream =
   |> File.stream!()
   |> CSV.decode!()
 
-
 # per performance reasons we process only 30 items of the data set
 batch_size = 30
 
@@ -290,7 +289,7 @@ Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 time
 
 ```elixir
 [
-  thirtyTwoBiases|> Nx.transpose(axes: [1, 0, 2, 3])
+  thirtyTwoBiases |> Nx.transpose(axes: [1, 0, 2, 3])
   | for c <- 0..15 do
       Nx.slice_along_axis(thirtyTwoKernels, c, 1, axis: 1) |> Nx.transpose(axes: [0, 2, 3, 1])
     end
@@ -422,7 +421,7 @@ bias_layer3 =
   Nx.Random.uniform(key, shape: {1, 120}) |> elem(0) |> Nx.subtract(0.5)
 
 [
-  bias_layer3 
+  bias_layer3
   |> Nx.reshape({1, 10, 12, 1}),
   randomMatrix_layer3
   |> Nx.reshape({1, 120, :auto, 1})
@@ -546,14 +545,12 @@ These 10 values shall represent a probability distribution describing the probab
 Since all the convolution kernels and weight matrix values were randomly generated we can expect the resulting 10-element-vector to also just containing 10 pretty random values.
 
 ```elixir
-
-
 [
   data |> Nx.transpose(axes: [0, 2, 3, 1]),
   result_layer_3_relu
   |> Nx.reshape({:auto, 12, 10}),
   result_layer_4
-  |> Nx.reshape({:auto, 10, 1, 1}),
+  |> Nx.reshape({:auto, 10, 1, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
   titel: "Output Layer",
@@ -563,7 +560,7 @@ Since all the convolution kernels and weight matrix values were randomly generat
   labels: [
     "Input",
     "Input from Layer 3",
-    "Result Layer 4",
+    "Result Layer 4"
   ]
 )
 ```
@@ -598,7 +595,7 @@ softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
 ]
 |> KinoZoetrope.TensorStack.new(
   titel: "Output Layer",
-  size: [210,20,210,20,20],
+  size: [210, 20, 210, 20, 20],
   show_meta: false,
   cmap: :viridis,
   labels: [
@@ -716,7 +713,18 @@ Now that we have unsterstood each step of the calculation we can but everything 
 defmodule Handwriting do
   import Nx.Defn
 
-  defn loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot) do
+  defn loss(
+         sixteenKernels,
+         sixteenBiases,
+         thirtyTwoKernels,
+         thirtyTwoBiases,
+         matrixA,
+         matABias,
+         matrixB,
+         matBBias,
+         data,
+         labels_one_hot
+       ) do
     output =
       data
       |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
@@ -746,8 +754,30 @@ defmodule Handwriting do
       |> Nx.negate()
   end
 
-  defn mean_loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot) do
-    loss(sixteenKernels, sixteenBiases, thirtyTwoKernels, thirtyTwoBiases, matrixA, matABias, matrixB, matBBias, data, labels_one_hot)
+  defn mean_loss(
+         sixteenKernels,
+         sixteenBiases,
+         thirtyTwoKernels,
+         thirtyTwoBiases,
+         matrixA,
+         matABias,
+         matrixB,
+         matBBias,
+         data,
+         labels_one_hot
+       ) do
+    loss(
+      sixteenKernels,
+      sixteenBiases,
+      thirtyTwoKernels,
+      thirtyTwoBiases,
+      matrixA,
+      matABias,
+      matrixB,
+      matBBias,
+      data,
+      labels_one_hot
+    )
     |> Nx.mean()
   end
 end
@@ -957,12 +987,14 @@ Stream.unfold(
     randomMatrix_layer3,
     bias_layer3,
     randomMatrix_layer4,
-    bias_layer4,
+    bias_layer4
   },
   # iteration step
   fn {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4} ->
     # calculate the loss value and all gradients
-    {loss, {_data, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad, bl4_grad}} =
+    {loss,
+     {_data, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad,
+      bl4_grad}} =
       Nx.Defn.value_and_grad(
         # the values for that we want the gradients
         {data, layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
@@ -995,7 +1027,7 @@ Stream.unfold(
        layer3 |> Nx.subtract(layer3_grad |> Nx.multiply(learning_rate)),
        bl3 |> Nx.subtract(bl3_grad |> Nx.multiply(learning_rate)),
        layer4 |> Nx.subtract(layer4_grad |> Nx.multiply(learning_rate)),
-       bl4 |> Nx.subtract(bl4_grad |> Nx.multiply(learning_rate)),
+       bl4 |> Nx.subtract(bl4_grad |> Nx.multiply(learning_rate))
      }}
   end
 )
