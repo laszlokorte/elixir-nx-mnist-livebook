@@ -1,4 +1,4 @@
-<!-- livebook:{"file_entries":[{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"}]} -->
+<!-- livebook:{"file_entries":[{"name":"dump_conv1.bias.txt","type":"attachment"},{"name":"dump_conv1.weight.txt","type":"attachment"},{"name":"dump_conv2.bias.txt","type":"attachment"},{"name":"dump_conv2.weight.txt","type":"attachment"},{"name":"dump_fc1.bias.txt","type":"attachment"},{"name":"dump_fc1.weight.txt","type":"attachment"},{"name":"dump_fc2.bias.txt","type":"attachment"},{"name":"dump_fc2.weight.txt","type":"attachment"},{"name":"mnist_test.csv","type":"attachment"},{"name":"mnist_train.csv","type":"attachment"}]} -->
 
 # Handwritten Digit Recognition
 
@@ -1031,7 +1031,7 @@ Stream.unfold(
      }}
   end
 )
-|> Enum.take(1)
+|> Enum.take(0)
 
 # [
 #   #Nx.Tensor<
@@ -1075,4 +1075,29 @@ Stream.unfold(
 #     9.520728
 #   >
 # ]
+```
+
+```elixir
+pretrained =
+  for {d, s} <- [
+        {"dump_conv1.weight.txt", {16, 3, 3, 1}},
+        {"dump_conv1.bias.txt", {1, 4, 4, 1}},
+        {"dump_conv2.weight.txt", {32, 4 * 3, 4 * 3, 1}},
+        {"dump_conv2.bias.txt", {1, 4, 8, 1}},
+        {"dump_fc1.weight.txt", {1, 120, :auto, 1}},
+        {"dump_fc1.bias.txt", {1, 10, 12, 1}},
+        {"dump_fc2.weight.txt", {1, :auto, 100, 1}},
+        {"dump_fc2.bias.txt", {1, 1, 10, 1}}
+      ] do
+    Kino.FS.file_path(d)
+    |> File.stream!()
+    |> CSV.decode!()
+    |> Stream.map(&Enum.map(&1, fn x -> String.to_float(x) end))
+    |> Enum.to_list()
+    |> Nx.tensor()
+    |> Nx.reshape(s)
+  end
+
+pretrained
+|> KinoZoetrope.TensorStack.new(titel: "16 Random kernels", labels: ["Bias", "Weights"])
 ```
