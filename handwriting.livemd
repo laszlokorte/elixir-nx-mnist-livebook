@@ -25,6 +25,7 @@ You can download it here: https://www.kaggle.com/api/v1/datasets/download/oddrat
 csv_stream =
   Kino.FS.file_path("mnist_train.csv")
   |> File.stream!()
+  |> Stream.drop(1)
   |> CSV.decode!()
 
 # per performance reasons we process only 30 items of the data set
@@ -50,8 +51,10 @@ labels =
   |> Nx.tensor()
   |> Nx.reshape({:auto, 1})
 
-# One-Hot-Encoding a way to encoded a intenger number as 
-# the only 1 at a position in a vector
+# One-Hot-Encoding is a way to encoded an intenger n as 
+# as a 1D vector of zeros with only the nth field set to 1
+# it can be thought of as a discrete probability distribution (or histogram)
+# saying 100% chance of the the number being equal to n
 labels_one_hot =
   Nx.iota({10})
   |> Nx.equal(labels)
