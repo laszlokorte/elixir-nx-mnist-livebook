@@ -10,11 +10,17 @@ Mix.install([
   {:csv, "~> 3.2"},
   {:pythonx, "~> 0.4.2"},
   {:kino_pythonx, "~> 0.1.0"},
-  {:nx_signal, "~> 0.3.0"}
+  {:nx_signal, "~> 0.3.0"},
+  {:exla, "~> 0.11.0"}
 ])
+
 ```
 
 ## Introduction
+
+```elixir
+Nx.global_default_backend(EXLA.Backend)
+```
 
 The MNIST dataset contains a collection of handwritten digits (0-9) stored as 28x28 grayscale images with 255 values (8bit) per pixel and an additional label (0-9)
 
@@ -781,7 +787,7 @@ cross_entropy =
       for: [4],
       # list of {x,y} coordinates. The length if the list
       # should match the number of frames of the image
-      points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
+      points: 0..(Nx.size(labels) - 1) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
     }
   ],
   frame_label: "Input Image"
@@ -815,9 +821,9 @@ defmodule Handwriting do
     output =
       data
       |> Nx.rename([:batch, :channel, :x, :y])
+      # |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
       |> Nx.vectorize(:batch)
       |> Nx.pad(0, [{0, 0, 0}, {1, 1, 0}, {1, 1, 0}])
-      # |> Nx.conv(sixteenKernels, padding: [{1, 1}, {1, 1}])
       |> NxSignal.Convolution.convolve(
         sixteenKernels
         |> Nx.vectorize(:channel),
@@ -852,14 +858,13 @@ defmodule Handwriting do
 
     output_exp = Nx.exp(output)
 
-    _loss =
-      output_exp
-      |> Nx.divide(Nx.sum(output_exp, axes: [1], keep_axes: true))
-      |> Nx.add(Nx.Constants.epsilon({:f, 32}))
-      |> Nx.log()
-      |> Nx.multiply(labels_one_hot)
-      |> Nx.sum(axes: [-1])
-      |> Nx.negate()
+    output_exp
+    |> Nx.divide(Nx.sum(output_exp, axes: [1], keep_axes: true))
+    |> Nx.add(Nx.Constants.epsilon({:f, 32}))
+    |> Nx.log()
+    |> Nx.multiply(labels_one_hot)
+    |> Nx.sum(axes: [-1])
+    |> Nx.negate()
   end
 
   defn mean_loss(
@@ -1001,9 +1006,13 @@ This multi dimensional derivative/slope is called gradient.
 Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
 
 ```elixir
-{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad} =
+labels_one_hot_exla = labels_one_hot |> Nx.backend_transfer(EXLA.Backend)
+data_exla = data |> Nx.backend_transfer(EXLA.Backend)
+
+{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad, _,
+ _} =
   Nx.Defn.grad(
-    {
+    [
       sixteenKernels,
       sixteenBiases,
       thirtyTwoKernels,
@@ -1011,9 +1020,13 @@ Notice that `Nx.Defn.grad` returns exactly as many results as it is given argume
       randomMatrix_layer3,
       bias_layer3,
       randomMatrix_layer4,
-      bias_layer4
-    },
-    fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b} ->
+      bias_layer4,
+      labels_one_hot,
+      data
+    ]
+    |> Enum.map(&Nx.backend_transfer(&1, EXLA.Backend))
+    |> List.to_tuple(),
+    fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b, lbl, dta} ->
       Handwriting.mean_loss(
         kernel16,
         b16,
@@ -1023,8 +1036,8 @@ Notice that `Nx.Defn.grad` returns exactly as many results as it is given argume
         m1b,
         matrixB,
         m2b,
-        data,
-        labels_one_hot
+        dta,
+        lbl
       )
     end
   )
@@ -1376,7 +1389,7 @@ all_loss =
       for: [2],
       # list of {x,y} coordinates. The length if the list
       # should match the number of frames of the image
-      points: 0..Nx.size(labels) |> Enum.map(&{&1, 0})
+      points: 0..(Nx.size(labels) - 1) |> Enum.map(&{&1, 0})
     },
     %{
       attrs: %{
@@ -1391,7 +1404,7 @@ all_loss =
       for: [3],
       # list of {x,y} coordinates. The length if the list
       # should match the number of frames of the image
-      points: 0..Nx.size(labels) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
+      points: 0..(Nx.size(labels) - 1) |> Enum.map(&{rem(&1, 10), div(&1, 10)})
     },
     %{
       attrs: %{
@@ -1400,7 +1413,7 @@ all_loss =
         "stroke-width" => 2,
         "fill" => "none",
         "rx" => 10,
-        "ry" => 10,
+        "ry" => 10
       },
       faded: true,
       # indices of the images to add the markers to, here the first (0) and second (1) image
