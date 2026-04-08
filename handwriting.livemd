@@ -11,16 +11,20 @@ Mix.install([
   {:pythonx, "~> 0.4.2"},
   {:kino_pythonx, "~> 0.1.0"},
   {:nx_signal, "~> 0.3.0"},
-  {:exla, "~> 0.11.0"}
+  {:exla, "~> 0.11.0"},
+  {:fine, "0.1.4"}
 ])
-
 ```
 
-## Introduction
+## Config
+
+Configure Nx to calculate on the GPU (if available) or hardware accelerated on the CPU.
 
 ```elixir
 Nx.global_default_backend(EXLA.Backend)
 ```
+
+## Introduction
 
 The MNIST dataset contains a collection of handwritten digits (0-9) stored as 28x28 grayscale images with 255 values (8bit) per pixel and an additional label (0-9)
 
@@ -1006,9 +1010,6 @@ This multi dimensional derivative/slope is called gradient.
 Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
 
 ```elixir
-labels_one_hot_exla = labels_one_hot |> Nx.backend_transfer(EXLA.Backend)
-data_exla = data |> Nx.backend_transfer(EXLA.Backend)
-
 {k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad, _,
  _} =
   Nx.Defn.grad(
@@ -1095,7 +1096,7 @@ Next we can plot all the parameter valus again, together with their gradients (s
 For actually performing the training step we now need to subtract all the gradient values from all the parameter values and then run all the calculations again, with the updated parameter values.
 
 ```elixir
-learning_rate = 0.001
+learning_rate = 0.002
 
 Stream.unfold(
   # start with random weight values
@@ -1113,13 +1114,13 @@ Stream.unfold(
   fn {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4} ->
     # calculate the loss value and all gradients
     {loss,
-     {_data, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad,
+     {_data, _lbl, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad,
       bl4_grad}} =
       Nx.Defn.value_and_grad(
         # the values for that we want the gradients
-        {data, layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
+        {data, labels_one_hot, layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
         # need to by piped through the value_and_grad function
-        fn {d, kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2} ->
+        fn {d, labels1h, kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2} ->
           # calculate the mean loss value across all input images
           Handwriting.mean_loss(
             kernel16,
@@ -1131,7 +1132,7 @@ Stream.unfold(
             matrixB,
             bm2,
             d,
-            labels_one_hot
+            labels1h
           )
         end
       )
@@ -1151,7 +1152,7 @@ Stream.unfold(
      }}
   end
 )
-|> Enum.take(0)
+|> Enum.take(10)
 
 # [
 #   #Nx.Tensor<
