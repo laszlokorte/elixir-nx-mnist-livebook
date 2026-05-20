@@ -4,14 +4,14 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.11.0"},
-  {:kino_zoetrope, "~> 0.20.0"},
-  {:kino_rewind, "~> 0.1.0"},
+  {:nx, "~> 0.12.0"},
+  {:kino_zoetrope, "~> 0.24.0"},
+  {:kino_rewind, "~> 0.2.0"},
   {:csv, "~> 3.2"},
   {:pythonx, "~> 0.4.2"},
   {:kino_pythonx, "~> 0.1.0"},
   {:nx_signal, "~> 0.3.0"},
-  {:exla, "~> 0.11.0"},
+  {:exla, "~> 0.12.0"},
   {:fine, "0.1.4"}
 ])
 ```
@@ -52,6 +52,7 @@ data =
   |> Nx.reshape({:auto, 1, 28, 28})
   # convert 0..255 to 0..1.0
   |> Nx.divide(255)
+  |> Nx.backend_transfer()
 
 labels =
   csv_stream
@@ -61,6 +62,7 @@ labels =
   |> Enum.to_list()
   |> Nx.tensor()
   |> Nx.reshape({:auto, 1})
+  |> Nx.backend_transfer()
 
 # One-Hot-Encoding is a way to encoded an intenger n as 
 # as a 1D vector of zeros with only the nth field set to 1
@@ -69,6 +71,7 @@ labels =
 labels_one_hot =
   Nx.iota({10})
   |> Nx.equal(labels)
+  |> Nx.backend_transfer()
 
 [
   data |> Nx.reshape({:auto, 28, 28}),
@@ -1010,8 +1013,7 @@ This multi dimensional derivative/slope is called gradient.
 Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
 
 ```elixir
-{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad, _,
- _} =
+{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad} =
   Nx.Defn.grad(
     [
       sixteenKernels,
@@ -1021,13 +1023,11 @@ Notice that `Nx.Defn.grad` returns exactly as many results as it is given argume
       randomMatrix_layer3,
       bias_layer3,
       randomMatrix_layer4,
-      bias_layer4,
-      labels_one_hot,
-      data
+      bias_layer4
     ]
     |> Enum.map(&Nx.backend_transfer(&1, EXLA.Backend))
     |> List.to_tuple(),
-    fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b, lbl, dta} ->
+    fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b} ->
       Handwriting.mean_loss(
         kernel16,
         b16,
@@ -1037,8 +1037,8 @@ Notice that `Nx.Defn.grad` returns exactly as many results as it is given argume
         m1b,
         matrixB,
         m2b,
-        dta,
-        lbl
+        data,
+        labels_one_hot
       )
     end
   )
@@ -1114,13 +1114,12 @@ Stream.unfold(
   fn {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4} ->
     # calculate the loss value and all gradients
     {loss,
-     {_data, _lbl, layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad,
-      bl4_grad}} =
+     {layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad, bl4_grad}} =
       Nx.Defn.value_and_grad(
         # the values for that we want the gradients
-        {data, labels_one_hot, layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
+        {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4},
         # need to by piped through the value_and_grad function
-        fn {d, labels1h, kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2} ->
+        fn {kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2} ->
           # calculate the mean loss value across all input images
           Handwriting.mean_loss(
             kernel16,
@@ -1131,8 +1130,8 @@ Stream.unfold(
             bm1,
             matrixB,
             bm2,
-            d,
-            labels1h
+            data,
+            labels_one_hot
           )
         end
       )
@@ -1223,6 +1222,7 @@ pretrained =
     |> Stream.map(&Enum.map(&1, fn x -> String.to_float(x) end))
     |> Enum.to_list()
     |> Nx.tensor()
+    |> Nx.backend_transfer()
     |> Nx.reshape(s)
   end
 
