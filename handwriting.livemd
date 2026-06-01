@@ -6,7 +6,7 @@
 Mix.install([
   {:nx, "~> 0.12.1"},
   {:kino_zoetrope, "~> 0.25.0"},
-  {:kino_rewind, "~> 0.3.0"},
+  {:kino_rewind, "~> 0.2.0"},
   {:csv, "~> 3.2"},
   {:pythonx, "~> 0.4.2"},
   {:kino_pythonx, "~> 0.1.0"},
@@ -75,7 +75,7 @@ labels_one_hot =
   labels_one_hot |> Nx.reshape({:auto, 1, 10, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Handwritten digits",
+  titel: "Handwritten digits",
   labels: ["Bitmap", "Label", "Labels (One Hot)"],
   frame_label: "Input Image"
 )
@@ -108,7 +108,7 @@ allKernels =
 
 [kernelA, kernelB, kernelC, allKernels]
 |> KinoZoetrope.TensorStack.new(
-  title: "4 Example Kernels",
+  titel: "4 Example Kernels",
   size: 100,
   labels: ["Horizontal", "Vertical", "blur", "All three kernels stacked"]
 )
@@ -190,7 +190,7 @@ result1 =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Result of Convolution with 4 Kernels",
+  titel: "Result of Convolution with 4 Kernels",
   cmap: :viridis,
   labels: [
     "Original Input",
@@ -208,22 +208,20 @@ result1 =
 ```elixir
 key = Nx.Random.key(0)
 
-sixteenKernels =
+{sixteenKernels, new_key} =
   Nx.Random.uniform(key, shape: {16, 1, 3, 3})
-  |> elem(0)
-  |> Nx.subtract(0.5)
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
-sixteenBiases =
-  Nx.Random.uniform(key, shape: {1, 16, 1, 1})
-  |> elem(0)
-  |> Nx.subtract(0.5)
+{sixteenBiases, new_key} =
+  Nx.Random.uniform(new_key, shape: {1, 16, 1, 1})
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
 [
   sixteenBiases |> Nx.transpose(axes: [1, 0, 2, 3]),
   sixteenKernels |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "16 Random kernels",
+  titel: "16 Random kernels",
   labels: ["Bias", "Weights"],
   frame_label: "Kernel"
 )
@@ -251,7 +249,7 @@ result_layer_1 =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 1 Convolution results",
+  titel: "Layer 1 Convolution results",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")],
@@ -272,7 +270,7 @@ result_layer_1_relu = Nx.max(0, result_layer_1)
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 1 Relu results (max(0, x))",
+  titel: "Layer 1 Relu results (max(0, x))",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")],
@@ -295,7 +293,7 @@ result_layer_1_relu_max_pooled =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 1 Pooling Results",
+  titel: "Layer 1 Pooling Results",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")],
@@ -344,7 +342,7 @@ result_layer_1_relu_max_pooled_flatten =
   |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 1 Pooling flattend into 2d array",
+  titel: "Layer 1 Pooling flattend into 2d array",
   labels: ["Original Input", "Result Layer 1  2D-Flattened"],
   size: [200, 400],
   cmap: :viridis,
@@ -359,8 +357,14 @@ All the (14 * 14 * 16 = 56 * 56) values calculated by Layer 1 are passed to Laye
 ```elixir
 # Generate 32 kernels of size 16x3x3 (3x3 across width*height and across all 16 channels)
 key = Nx.Random.key(1)
-thirtyTwoKernels = Nx.Random.uniform(key, shape: {32, 16, 3, 3}) |> elem(0) |> Nx.subtract(0.5)
-thirtyTwoBiases = Nx.Random.uniform(key, shape: {1, 32, 1, 1}) |> elem(0) |> Nx.subtract(0.5)
+
+{thirtyTwoKernels, new_key} =
+  Nx.Random.uniform(key, shape: {32, 16, 3, 3})
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
+
+{thirtyTwoBiases, new_key} =
+  Nx.Random.uniform(new_key, shape: {1, 32, 1, 1})
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
 Nx.shape(thirtyTwoKernels)
 ```
@@ -375,7 +379,7 @@ Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 time
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
+  titel: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
   show_meta: false,
   size: 80,
   legend: false,
@@ -428,7 +432,7 @@ Lets inspect the result visually. At this point, for each initial input we have 
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 2 Convolution results",
+  titel: "Layer 2 Convolution results",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -449,7 +453,7 @@ result_layer_2_relu = Nx.max(0, result_layer_2)
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 2 Relu Results (max(0, 1))",
+  titel: "Layer 2 Relu Results (max(0, 1))",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -478,7 +482,7 @@ result_layer_2_relu_max_pooled =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 2 Pooling result",
+  titel: "Layer 2 Pooling result",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -498,7 +502,7 @@ The calculations of Layer 2 are done. Be can reshape all the resulting values in
   result_layer_2_relu_max_pooled |> Grid.make_grid() |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 2 Pooling flattend into 2D array",
+  titel: "Layer 2 Pooling flattend into 2D array",
   labels: ["Original Input", "Result Layer 2 Flattened"],
   cmap: :viridis,
   size: [100, 400],
@@ -519,16 +523,13 @@ We first need to create tensor to contain these numbers. We can also plot this 2
 ```elixir
 key = Nx.Random.key(2)
 
-randomMatrix_layer3 =
+{randomMatrix_layer3, new_key} =
   Nx.Random.uniform(key, shape: {32 * 7 * 7, 120})
-  |> elem(0)
-  |> Nx.subtract(0.5)
-  |> Nx.backend_copy(EXLA.Backend)
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
-bias_layer3 =
-  Nx.Random.uniform(key, shape: {1, 120})
-  |> elem(0)
-  |> Nx.subtract(0.5)
+{bias_layer3, new_key} =
+  Nx.Random.uniform(new_key, shape: {1, 120})
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
 [
   bias_layer3
@@ -537,7 +538,7 @@ bias_layer3 =
   |> Nx.reshape({1, 120, :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 3 Weight Matrix",
+  titel: "Layer 3 Weight Matrix",
   size: [100, 800],
   show_meta: true,
   legend: false,
@@ -577,7 +578,7 @@ Layer 3 produces just a flat list of 100 numbers but when plotting them its nice
   |> Nx.reshape({:auto, 12, 10})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 3 Matrix Multiplication",
+  titel: "Layer 3 Matrix Multiplication",
   show_meta: false,
   labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix Multiplication"],
   cmap: :viridis,
@@ -603,7 +604,7 @@ result_layer_3_relu = Nx.max(0, result_layer_3)
   |> Nx.reshape({:auto, 12, 10})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 3 Relu Activation",
+  titel: "Layer 3 Relu Activation",
   show_meta: false,
   cmap: :viridis,
   legend: [false, false, true, true],
@@ -623,15 +624,13 @@ This means we need 120 * 10 = 1200 weight-values, or a 120 * 10 matrix:
 ```elixir
 key = Nx.Random.key(2)
 
-randomMatrix_layer4 =
+{randomMatrix_layer4, new_key} =
   Nx.Random.uniform(key, shape: {120, 10})
-  |> elem(0)
-  |> Nx.subtract(0.5)
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
-bias_layer4 =
-  Nx.Random.uniform(key, shape: {10})
-  |> elem(0)
-  |> Nx.subtract(0.5)
+{bias_layer4, new_key} =
+  Nx.Random.uniform(new_key, shape: {10})
+  |> then(fn {t, k} -> {Nx.subtract(t, 0.5), k} end)
 
 [
   bias_layer4
@@ -640,7 +639,7 @@ bias_layer4 =
   |> Nx.reshape({1, :auto, 120, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Layer 4 Weight Matrix",
+  titel: "Layer 4 Weight Matrix",
   size: [10, 600],
   show_meta: true,
   cmap: :viridis,
@@ -673,7 +672,7 @@ Since all the convolution kernels and weight matrix values were randomly generat
   |> Nx.reshape({:auto, 10, 1, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Output Layer",
+  titel: "Output Layer",
   show_meta: false,
   cmap: :viridis,
   size: [150, 150, 20],
@@ -715,7 +714,7 @@ softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
   softmax_log |> Nx.reshape({:auto, 10, 1, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Output Layer",
+  titel: "Output Layer",
   size: [210, 20, 210, 20, 20],
   show_meta: false,
   cmap: :viridis,
@@ -785,7 +784,7 @@ cross_entropy =
 ]
 |> Enum.concat(all_parameters |> Enum.map(fn {_, {a, b}, p} -> Nx.reshape(p, {1, a, b, 1}) end))
 |> KinoZoetrope.TensorStack.new(
-  title: "Random Matrix",
+  titel: "Random Matrix",
   show_meta: false,
   labels:
     [
@@ -996,7 +995,7 @@ all_params_combined =
   all_params_combined |> Nx.reshape({1, 10, :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Random Matrix",
+  titel: "Random Matrix",
   show_meta: false,
   size: [100, 100, 400],
   labels: [
@@ -1122,7 +1121,7 @@ Next we can plot all the parameter valus again, together with their gradients (s
   size: [100, 100, 210, 210, 700, 700, 700, 700],
   show_meta: false,
   legend: false,
-  title: "Gradients",
+  titel: "Gradients",
   labels: [
     "16 3x3 Kernels (L1)",
     "Gradients (L1)",
@@ -1303,7 +1302,7 @@ pretrained =
 
 pretrained
 |> KinoZoetrope.TensorStack.new(
-  title: "16 Random kernels",
+  titel: "16 Random kernels",
   cmap: :viridis,
   labels:
     for {d, _} <- dumped_files do
@@ -1441,7 +1440,7 @@ all_loss =
   all_loss |> Nx.reshape({1, :auto, 10, 1}) |> Nx.log()
 ]
 |> KinoZoetrope.TensorStack.new(
-  title: "Random Matrix",
+  titel: "Random Matrix",
   show_meta: false,
   size: [300, 100, 400, 100],
   labels: [
