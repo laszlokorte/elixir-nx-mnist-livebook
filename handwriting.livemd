@@ -4,7 +4,7 @@
 
 ```elixir
 Mix.install([
-  {:nx, "~> 0.12.0"},
+  {:nx, "~> 0.12.1"},
   {:kino_zoetrope, "~> 0.24.0"},
   {:kino_rewind, "~> 0.2.0"},
   {:csv, "~> 3.2"},
@@ -82,7 +82,10 @@ labels_one_hot =
 ```
 
 ```elixir
-kernelA = Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]]) |> Nx.new_axis(2) |> Nx.new_axis(0)
+kernelA =
+  Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+  |> Nx.new_axis(2)
+  |> Nx.new_axis(0)
 
 kernelB =
   Nx.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
@@ -1032,18 +1035,48 @@ This multi dimensional derivative/slope is called gradient.
 Notice that `Nx.Defn.grad` returns exactly as many results as it is given arguments.
 
 ```elixir
-dbg(labels_one_hot
-)
-```
-
-```elixir
-Nx.Constants.epsilon({:f, 32})
-```
-
-```elixir
-{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad, _, _} =
-  Nx.Defn.grad(
+{k16_grad, b16_grad, k32_grad, b32_grad, mat1_grad, mat1_bias_grad, mat2_grad, mat2_bias_grad} =
+  Nx.Defn.jit_apply(
+    fn d,
+       l,
+       sixteenKernels,
+       sixteenBiases,
+       thirtyTwoKernels,
+       thirtyTwoBiases,
+       randomMatrix_layer3,
+       bias_layer3,
+       randomMatrix_layer4,
+       bias_layer4 ->
+      Nx.Defn.grad(
+        {
+          sixteenKernels,
+          sixteenBiases,
+          thirtyTwoKernels,
+          thirtyTwoBiases,
+          randomMatrix_layer3,
+          bias_layer3,
+          randomMatrix_layer4,
+          bias_layer4
+        },
+        fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b} ->
+          Handwriting.mean_loss(
+            kernel16,
+            b16,
+            kernel32,
+            b32,
+            matrixA,
+            m1b,
+            matrixB,
+            m2b,
+            d,
+            l
+          )
+        end
+      )
+    end,
     [
+      data,
+      labels_one_hot,
       sixteenKernels,
       sixteenBiases,
       thirtyTwoKernels,
@@ -1051,26 +1084,8 @@ Nx.Constants.epsilon({:f, 32})
       randomMatrix_layer3,
       bias_layer3,
       randomMatrix_layer4,
-      bias_layer4,
-      data,
-      labels_one_hot
+      bias_layer4
     ]
-    |> Enum.map(&Nx.backend_copy(&1, EXLA.Backend))
-    |> List.to_tuple(),
-    fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b, d, l} ->
-      Handwriting.mean_loss(
-        kernel16,
-        b16,
-        kernel32,
-        b32,
-        matrixA,
-        m1b,
-        matrixB,
-        m2b,
-        d,
-        l
-      )
-    end
   )
 
 Kino.nothing()
@@ -1128,6 +1143,45 @@ For actually performing the training step we now need to subtract all the gradie
 ```elixir
 learning_rate = 0.002
 
+val_n_grad =
+  Nx.Defn.jit(fn d,
+                 l,
+                 sixteenKernels,
+                 sixteenBiases,
+                 thirtyTwoKernels,
+                 thirtyTwoBiases,
+                 randomMatrix_layer3,
+                 bias_layer3,
+                 randomMatrix_layer4,
+                 bias_layer4 ->
+    Nx.Defn.value_and_grad(
+      {
+        sixteenKernels,
+        sixteenBiases,
+        thirtyTwoKernels,
+        thirtyTwoBiases,
+        randomMatrix_layer3,
+        bias_layer3,
+        randomMatrix_layer4,
+        bias_layer4
+      },
+      fn {kernel16, b16, kernel32, b32, matrixA, m1b, matrixB, m2b} ->
+        Handwriting.mean_loss(
+          kernel16,
+          b16,
+          kernel32,
+          b32,
+          matrixA,
+          m1b,
+          matrixB,
+          m2b,
+          d,
+          l
+        )
+      end
+    )
+  end)
+
 Stream.unfold(
   # start with random weight values
   {
@@ -1138,32 +1192,24 @@ Stream.unfold(
     randomMatrix_layer3,
     bias_layer3,
     randomMatrix_layer4,
-    bias_layer4,
+    bias_layer4
   },
   # iteration step
   fn {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4} ->
     # calculate the loss value and all gradients
     {loss,
-     {layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad, bl4_grad, _, _}} =
-      Nx.Defn.value_and_grad(
-        # the values for that we want the gradients
-        {layer1, bl1, layer2, bl2, layer3, bl3, layer4, bl4, data, labels_one_hot},
-        # need to by piped through the value_and_grad function
-        fn {kernel16, b16, kernel32, b32, matrixA, bm1, matrixB, bm2, d, l} ->
-          # calculate the mean loss value across all input images
-          Handwriting.mean_loss(
-            kernel16,
-            b16,
-            kernel32,
-            b32,
-            matrixA,
-            bm1,
-            matrixB,
-            bm2,
-            d,
-            l
-          )
-        end
+     {layer1_grad, bl1_grad, layer2_grad, bl2_grad, layer3_grad, bl3_grad, layer4_grad, bl4_grad}} =
+      val_n_grad.(
+        data,
+        labels_one_hot,
+        layer1,
+        bl1,
+        layer2,
+        bl2,
+        layer3,
+        bl3,
+        layer4,
+        bl4
       )
 
     # output calculated loss
@@ -1379,7 +1425,7 @@ all_loss =
     |> Nx.reshape({10, 120})
     |> Nx.transpose(axes: [1, 0]),
     lwb |> Nx.reshape({10}),
-    data ,
+    data,
     labels_one_hot
   )
 ```
