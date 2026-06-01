@@ -5,8 +5,8 @@
 ```elixir
 Mix.install([
   {:nx, "~> 0.12.1"},
-  {:kino_zoetrope, "~> 0.24.0"},
-  {:kino_rewind, "~> 0.2.0"},
+  {:kino_zoetrope, "~> 0.25.0"},
+  {:kino_rewind, "~> 0.3.0"},
   {:csv, "~> 3.2"},
   {:pythonx, "~> 0.4.2"},
   {:kino_pythonx, "~> 0.1.0"},
@@ -75,7 +75,7 @@ labels_one_hot =
   labels_one_hot |> Nx.reshape({:auto, 1, 10, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Handwritten digits",
+  title: "Handwritten digits",
   labels: ["Bitmap", "Label", "Labels (One Hot)"],
   frame_label: "Input Image"
 )
@@ -108,7 +108,7 @@ allKernels =
 
 [kernelA, kernelB, kernelC, allKernels]
 |> KinoZoetrope.TensorStack.new(
-  titel: "4 Example Kernels",
+  title: "4 Example Kernels",
   size: 100,
   labels: ["Horizontal", "Vertical", "blur", "All three kernels stacked"]
 )
@@ -190,7 +190,7 @@ result1 =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Result of Convolution with 4 Kernels",
+  title: "Result of Convolution with 4 Kernels",
   cmap: :viridis,
   labels: [
     "Original Input",
@@ -223,7 +223,7 @@ sixteenBiases =
   sixteenKernels |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "16 Random kernels",
+  title: "16 Random kernels",
   labels: ["Bias", "Weights"],
   frame_label: "Kernel"
 )
@@ -251,7 +251,7 @@ result_layer_1 =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 1 Convolution results",
+  title: "Layer 1 Convolution results",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c}")],
@@ -272,7 +272,7 @@ result_layer_1_relu = Nx.max(0, result_layer_1)
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 1 Relu results (max(0, x))",
+  title: "Layer 1 Relu results (max(0, x))",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "Result for kernel #{c} Relu")],
@@ -295,7 +295,7 @@ result_layer_1_relu_max_pooled =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 1 Pooling Results",
+  title: "Layer 1 Pooling Results",
   cmap: :viridis,
   show_meta: false,
   labels: ["Original Input" | for(c <- 1..16, do: "K#{c} result max-pooled")],
@@ -344,7 +344,7 @@ result_layer_1_relu_max_pooled_flatten =
   |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 1 Pooling flattend into 2d array",
+  title: "Layer 1 Pooling flattend into 2d array",
   labels: ["Original Input", "Result Layer 1  2D-Flattened"],
   size: [200, 400],
   cmap: :viridis,
@@ -375,7 +375,7 @@ Layer 2 only two times as many kernels as in Layer 2 but each kernel has 16 time
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
+  title: "Layer 2 uses 32 Random kernels for 16 channels (32*16*3*3 in total)",
   show_meta: false,
   size: 80,
   legend: false,
@@ -428,7 +428,7 @@ Lets inspect the result visually. At this point, for each initial input we have 
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 2 Convolution results",
+  title: "Layer 2 Convolution results",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -449,7 +449,7 @@ result_layer_2_relu = Nx.max(0, result_layer_2)
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 2 Relu Results (max(0, 1))",
+  title: "Layer 2 Relu Results (max(0, 1))",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -478,7 +478,7 @@ result_layer_2_relu_max_pooled =
     end
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 2 Pooling result",
+  title: "Layer 2 Pooling result",
   cmap: :viridis,
   show_meta: false,
   legend: false,
@@ -498,7 +498,7 @@ The calculations of Layer 2 are done. Be can reshape all the resulting values in
   result_layer_2_relu_max_pooled |> Grid.make_grid() |> Nx.transpose(axes: [0, 2, 3, 1])
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 2 Pooling flattend into 2D array",
+  title: "Layer 2 Pooling flattend into 2D array",
   labels: ["Original Input", "Result Layer 2 Flattened"],
   cmap: :viridis,
   size: [100, 400],
@@ -537,7 +537,7 @@ bias_layer3 =
   |> Nx.reshape({1, 120, :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 3 Weight Matrix",
+  title: "Layer 3 Weight Matrix",
   size: [100, 800],
   show_meta: true,
   legend: false,
@@ -577,7 +577,7 @@ Layer 3 produces just a flat list of 100 numbers but when plotting them its nice
   |> Nx.reshape({:auto, 12, 10})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 3 Matrix Multiplication",
+  title: "Layer 3 Matrix Multiplication",
   show_meta: false,
   labels: ["Original Input", "Input from Layer 2", "Result Layer 3 Matrix Multiplication"],
   cmap: :viridis,
@@ -603,7 +603,7 @@ result_layer_3_relu = Nx.max(0, result_layer_3)
   |> Nx.reshape({:auto, 12, 10})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 3 Relu Activation",
+  title: "Layer 3 Relu Activation",
   show_meta: false,
   cmap: :viridis,
   legend: [false, false, true, true],
@@ -640,7 +640,7 @@ bias_layer4 =
   |> Nx.reshape({1, :auto, 120, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Layer 4 Weight Matrix",
+  title: "Layer 4 Weight Matrix",
   size: [10, 600],
   show_meta: true,
   cmap: :viridis,
@@ -673,7 +673,7 @@ Since all the convolution kernels and weight matrix values were randomly generat
   |> Nx.reshape({:auto, 10, 1, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Output Layer",
+  title: "Output Layer",
   show_meta: false,
   cmap: :viridis,
   size: [150, 150, 20],
@@ -715,7 +715,7 @@ softmax_log = softmax |> Nx.add(Nx.Constants.epsilon({:f, 32})) |> Nx.log()
   softmax_log |> Nx.reshape({:auto, 10, 1, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Output Layer",
+  title: "Output Layer",
   size: [210, 20, 210, 20, 20],
   show_meta: false,
   cmap: :viridis,
@@ -785,7 +785,7 @@ cross_entropy =
 ]
 |> Enum.concat(all_parameters |> Enum.map(fn {_, {a, b}, p} -> Nx.reshape(p, {1, a, b, 1}) end))
 |> KinoZoetrope.TensorStack.new(
-  titel: "Random Matrix",
+  title: "Random Matrix",
   show_meta: false,
   labels:
     [
@@ -996,7 +996,7 @@ all_params_combined =
   all_params_combined |> Nx.reshape({1, 10, :auto, 1})
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Random Matrix",
+  title: "Random Matrix",
   show_meta: false,
   size: [100, 100, 400],
   labels: [
@@ -1122,7 +1122,7 @@ Next we can plot all the parameter valus again, together with their gradients (s
   size: [100, 100, 210, 210, 700, 700, 700, 700],
   show_meta: false,
   legend: false,
-  titel: "Gradients",
+  title: "Gradients",
   labels: [
     "16 3x3 Kernels (L1)",
     "Gradients (L1)",
@@ -1303,7 +1303,7 @@ pretrained =
 
 pretrained
 |> KinoZoetrope.TensorStack.new(
-  titel: "16 Random kernels",
+  title: "16 Random kernels",
   cmap: :viridis,
   labels:
     for {d, _} <- dumped_files do
@@ -1441,7 +1441,7 @@ all_loss =
   all_loss |> Nx.reshape({1, :auto, 10, 1}) |> Nx.log()
 ]
 |> KinoZoetrope.TensorStack.new(
-  titel: "Random Matrix",
+  title: "Random Matrix",
   show_meta: false,
   size: [300, 100, 400, 100],
   labels: [
